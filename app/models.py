@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,6 +20,33 @@ from app.database import Base
 
 def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
+
+
+# cert       certificate only (the classic per-user .ovpn)
+# cert_pass  certificate AND username/password (two factors)
+# pass       username/password only: every such user can share one
+#            certificate-less config file
+AUTH_MODES = ("cert", "cert_pass", "pass")
+
+# OpenVPN replaces anything outside printable ASCII in passwords, and spaces
+# only confuse people typing them into a phone, so keep to this set.
+PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def generate_vpn_password(length: int = 10) -> str:
+    return "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
+
+
+def find_vpn_user(db, name: str) -> "VpnUser | None":
+    """Look a user up by CN / login name: exact match first, then
+    case-insensitively (phone keyboards like to capitalise the first
+    letter of a typed username)."""
+    if not name:
+        return None
+    user = db.query(VpnUser).filter(VpnUser.username == name).first()
+    if user is None:
+        user = db.query(VpnUser).filter(func.lower(VpnUser.username) == name.lower()).first()
+    return user
 
 
 class AdminUser(Base):
@@ -68,6 +96,21 @@ class VpnUser(Base):
         DateTime, nullable=True
     )
     last_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # How the client proves who it is (see AUTH_MODES). Every user still gets
+    # a certificate, so switching modes never needs a new one.
+    auth_mode: Mapped[str] = mapped_column(String(16), default="cert", server_default="cert")
+    # Kept recoverable on purpose: the admin has to be able to show it to the
+    # user again, and OpenVPN clients send it in clear inside the TLS tunnel
+    # anyway. The database file is root-only (0600).
+    auth_password: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Simultaneous connections allowed across UDP+TCP; 0 = unlimited. The
+    # newest connection wins, older ones are disconnected.
+    max_devices: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+    @property
+    def needs_password(self) -> bool:
+        return self.auth_mode in ("cert_pass", "pass")
 
     def is_over_quota(self) -> bool:
         return (
@@ -141,3 +184,23 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(String(512))
+
+
+class RelayServer(Base):
+    """A server inside the country that forwards OpenVPN traffic to this
+    one (set up there with relay.sh). Client configs list the enabled
+    relays first, in `position` order, so users keep connecting through a
+    domestic address when direct international routes are throttled or
+    cut, with the direct address as the last fallback."""
+
+    __tablename__ = "relay_servers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(40))
+    address: Mapped[str] = mapped_column(String(253))
+    # ports the relay listens on (usually the same as this server's)
+    udp_port: Mapped[int] = mapped_column(Integer)
+    tcp_port: Mapped[int] = mapped_column(Integer)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)

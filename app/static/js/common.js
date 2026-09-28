@@ -237,6 +237,45 @@ function renderQr(el, text, size = 168) {
   new QRCode(el, { text, width: size, height: size, colorDark: "#0b0e17", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
 }
 
+/* ------------------------------------------------------ login / creds */
+const AUTH = {
+  cert: { label: "گواهی", icon: "cert" },
+  cert_pass: { label: "گواهی + رمز", icon: "shield-check" },
+  pass: { label: "فقط رمز", icon: "lock" },
+};
+// same alphabet as the server: no look-alikes (0/O, 1/l/I), no spaces
+const PW_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function randomPassword(len = 10) {
+  const buf = new Uint32Array(len);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (n) => PW_ALPHABET[n % PW_ALPHABET.length]).join("");
+}
+// One cred row. The value lives in data-v so copy/reveal never read the DOM text.
+function credRow(label, value, { secret = false } = {}) {
+  const shown = secret ? "•".repeat(Math.min(12, Math.max(6, String(value).length))) : esc(value);
+  return `<div class="cred" data-v="${esc(value)}">
+    <span class="k">${label}</span>
+    <span class="v mono ${secret ? "masked" : ""}" data-secret="${secret ? 1 : 0}">${shown}</span>
+    ${secret ? `<button type="button" class="btn icon sm ghost" data-cred="reveal" title="نمایش">${ic("eye")}</button>` : ""}
+    <button type="button" class="btn icon sm ghost" data-cred="copy" title="کپی">${ic("copy")}</button>
+  </div>`;
+}
+function shareText({ username, password, sub_link }) {
+  return [`نام کاربری: ${username}`, password ? `رمز: ${password}` : null, `لینک اشتراک: ${sub_link}`]
+    .filter(Boolean).join("\n");
+}
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-cred]");
+  if (!b) return;
+  const row = b.closest(".cred");
+  const v = row.dataset.v;
+  if (b.dataset.cred === "copy") return copyText(v, "کپی شد");
+  const span = row.querySelector(".v");
+  const hidden = span.classList.toggle("masked");
+  span.textContent = hidden ? "•".repeat(Math.min(12, Math.max(6, v.length))) : v;
+  b.innerHTML = ic(hidden ? "eye" : "eye-off");
+});
+
 async function withBusy(btn, fn) {
   if (btn) btn.classList.add("loading");
   try { return await fn(); } finally { if (btn) btn.classList.remove("loading"); }

@@ -5,8 +5,13 @@ TCP) for their currently connected clients via the management interface,
 turn the cumulative per-session byte counters into deltas, add those deltas
 onto each VpnUser's usage total (and today's TrafficSample row for the
 chart), and disconnect any session that belongs to a user who is disabled,
-expired, or now over quota -- even mid-session, so limits are enforced in
-near-real-time and not just at the next connection attempt.
+expired, now over quota, or over their device limit -- even mid-session, so
+limits are enforced in near-real-time and not just at the next connection
+attempt.
+
+Sessions are keyed by (proto, "ip:port"): that is unique per live session
+on one instance, works for password-only clients (which have no
+certificate CN), and lets one account be online from several devices.
 
 The client-disconnect hook (finalize_disconnect) accounts for the tail of
 each session. Both paths share state, so they run under one lock, and a
@@ -22,7 +27,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models import TrafficSample, VpnUser
+from app.models import TrafficSample, VpnUser, find_vpn_user
 from app.openvpn import mgmt
 
 logger = logging.getLogger("waze_panel.scheduler")
@@ -31,14 +36,12 @@ _TOMBSTONE_TTL_SECONDS = 300
 
 _lock = threading.Lock()
 
-# (proto, common_name) -> (session_start_t, last_bytes_received, last_bytes_sent)
-_last_seen: dict[tuple[str, str], tuple[int, int, int]] = {}
+# (proto, "ip:port") -> {"username", "proto", "ip", "since", "bytes",
+#                        "recv", "sent"}   (username is the canonical one)
+_sessions: dict[tuple[str, str], dict] = {}
 
-# (proto, common_name) -> (finalized_session_start_t or None, finalized_at)
+# (proto, "ip:port") -> (finalized_session_start_t or None, finalized_at)
 _finalized: dict[tuple[str, str], tuple[int | None, float]] = {}
-
-# (proto, common_name) -> live details for the dashboard
-_session_info: dict[tuple[str, str], dict] = {}
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -68,23 +71,46 @@ def _already_finalized(key: tuple[str, str], session_t: int) -> bool:
     finalized_session_t, finalized_at = tomb
     if finalized_session_t is not None:
         return session_t == finalized_session_t
-    # Session was shorter than one poll, so its start time was never seen:
-    # anything that started before the hook ran is that old session.
+    # Session start unknown (hook from an older install): anything that
+    # started before the hook ran is that old session.
     return session_t < int(finalized_at)
 
 
-def _poll_once() -> None:
-    # Talk to OpenVPN *before* taking the lock: a client-disconnect hook
-    # blocks its OpenVPN instance while it waits for finalize_disconnect(),
-    # so holding the lock across a management call could stall both.
+def _device_victims(sessions: list[tuple[int, mgmt.ClientSession]], max_devices: int):
+    """Newest connections win: everything but the latest `max_devices`."""
+    if max_devices <= 0 or len(sessions) <= max_devices:
+        return []
+    ordered = sorted(sessions, key=lambda ps: (ps[1].connected_since_t, ps[1].client_id or 0))
+    return ordered[: len(ordered) - max_devices]
+
+
+def _fetch_snapshots() -> dict[str, tuple[int, list[mgmt.ClientSession]] | None]:
     snapshots: dict[str, tuple[int, list[mgmt.ClientSession]] | None] = {}
     for proto, port in _instances():
         try:
             snapshots[proto] = (port, mgmt.get_client_sessions(port))
         except mgmt.ManagementError:
             snapshots[proto] = None  # instance down / restarting
+    return snapshots
 
-    to_kill: list[tuple[int, str, int | None]] = []
+
+def _kill(victims: list[tuple[int, mgmt.ClientSession]], why: str) -> None:
+    for port, sess in victims:
+        logger.info("disconnecting %s (%s) at %s: %s", sess.identity, port, sess.real_address, why)
+        try:
+            mgmt.kill_client(port, sess.real_address, sess.client_id)
+        except mgmt.ManagementError:
+            pass
+
+
+def _poll_once() -> None:
+    # Talk to OpenVPN *before* taking the lock: a client-disconnect hook
+    # blocks its OpenVPN instance while it waits for finalize_disconnect(),
+    # so holding the lock across a management call could stall both.
+    snapshots = _fetch_snapshots()
+
+    to_kill: list[tuple[int, mgmt.ClientSession]] = []
+    over_devices: list[tuple[int, mgmt.ClientSession]] = []
 
     with _lock:
         now = time.time()
@@ -94,46 +120,59 @@ def _poll_once() -> None:
         seen_keys: set[tuple[str, str]] = set()
         db = SessionLocal()
         try:
+            users: dict[str, VpnUser | None] = {}
+            by_user: dict[int, list[tuple[int, mgmt.ClientSession]]] = {}
             for proto, snap in snapshots.items():
                 if snap is None:
                     # Unknown state: keep this instance's baselines as they are.
-                    seen_keys.update(k for k in _last_seen if k[0] == proto)
+                    seen_keys.update(k for k in _sessions if k[0] == proto)
                     continue
                 port, sessions = snap
                 for sess in sessions:
-                    key = (proto, sess.common_name)
+                    key = (proto, sess.real_address)
                     if _already_finalized(key, sess.connected_since_t):
                         continue
                     seen_keys.add(key)
 
-                    prev = _last_seen.get(key)
-                    if prev and prev[0] == sess.connected_since_t:
-                        delta = max(0, sess.bytes_received - prev[1]) + max(0, sess.bytes_sent - prev[2])
+                    ident = sess.identity
+                    if ident.lower() not in users:
+                        users[ident.lower()] = find_vpn_user(db, ident)
+                    user = users[ident.lower()]
+
+                    prev = _sessions.get(key)
+                    if prev and prev["since"] == sess.connected_since_t:
+                        delta = max(0, sess.bytes_received - prev["recv"]) + max(0, sess.bytes_sent - prev["sent"])
                     else:
                         # First sight of this connection: count everything so far.
                         delta = sess.bytes_received + sess.bytes_sent
-                    _last_seen[key] = (sess.connected_since_t, sess.bytes_received, sess.bytes_sent)
-                    _session_info[key] = {
-                        "username": sess.common_name,
+                    ip = sess.real_address.rsplit(":", 1)[0]
+                    _sessions[key] = {
+                        "username": user.username if user else ident,
                         "proto": proto,
-                        "ip": sess.real_address.rsplit(":", 1)[0],
+                        "ip": ip,
                         "since": sess.connected_since_t,
                         "bytes": sess.bytes_received + sess.bytes_sent,
+                        "recv": sess.bytes_received,
+                        "sent": sess.bytes_sent,
                     }
 
-                    user = db.query(VpnUser).filter(VpnUser.username == sess.common_name).first()
                     if user is None:
-                        to_kill.append((port, sess.common_name, sess.client_id))
+                        to_kill.append((port, sess))
                         continue
 
                     if delta:
                         _record_usage(db, user, delta)
                     user.last_connected_at = datetime.datetime.now(datetime.timezone.utc)
-                    user.last_ip = sess.real_address.rsplit(":", 1)[0]
+                    user.last_ip = ip
                     db.flush()
 
                     if not user.is_usable():
-                        to_kill.append((port, user.username, sess.client_id))
+                        to_kill.append((port, sess))
+                    else:
+                        by_user.setdefault(user.id, []).append((port, sess))
+
+            for user in {u.id: u for u in users.values() if u is not None}.values():
+                over_devices += _device_victims(by_user.get(user.id, []), user.max_devices or 0)
             db.commit()
         except Exception:
             db.rollback()
@@ -141,47 +180,82 @@ def _poll_once() -> None:
         finally:
             db.close()
 
-        for key in [k for k in _last_seen if k not in seen_keys]:
-            _last_seen.pop(key, None)
-            _session_info.pop(key, None)
+        for key in [k for k in _sessions if k not in seen_keys]:
+            _sessions.pop(key, None)
 
-    for port, username, client_id in to_kill:
-        logger.info("disconnecting '%s' (disabled/expired/over quota/unknown)", username)
-        try:
-            mgmt.kill_client(port, username, client_id)
-        except mgmt.ManagementError:
-            pass
+    _kill(to_kill, "disabled/expired/over quota/unknown")
+    _kill(over_devices, "device limit")
 
 
-def finalize_disconnect(proto: str, common_name: str, bytes_received: int, bytes_sent: int) -> None:
+def enforce_device_limit_soon(username: str, max_devices: int, delay: float = 1.5) -> None:
+    """Called from the client-connect hook. OpenVPN is blocked until the
+    hook returns, so the older sessions are cut from a timer thread once the
+    new one is fully up, using a fresh management snapshot."""
+    if max_devices <= 0:
+        return
+
+    def run() -> None:
+        mine: list[tuple[int, mgmt.ClientSession]] = []
+        for _proto, snap in _fetch_snapshots().items():
+            if snap is None:
+                continue
+            port, sessions = snap
+            mine += [(port, s) for s in sessions if s.identity.lower() == username.lower()]
+        _kill(_device_victims(mine, max_devices), "device limit")
+
+    timer = threading.Timer(delay, run)
+    timer.daemon = True
+    timer.start()
+
+
+def finalize_disconnect(
+    proto: str,
+    identity: str,
+    bytes_received: int,
+    bytes_sent: int,
+    real_address: str = "",
+    start_t: int = 0,
+) -> None:
     """Called by the client-disconnect hook with the session's final byte
     counters. Accounts for whatever the periodic poll hasn't seen yet (or
     the whole session, if it was shorter than one poll interval)."""
-    key = (proto, common_name)
     final_total = max(0, bytes_received) + max(0, bytes_sent)
 
     with _lock:
-        prev = _last_seen.pop(key, None)
-        _session_info.pop(key, None)
+        key = (proto, real_address) if real_address else None
+        prev = _sessions.get(key) if key else None
+        if prev is not None and start_t and prev["since"] != start_t:
+            prev = None  # that address now belongs to a newer session
+        if key is None:
+            # Hook without the session address: find it by user + start.
+            for k, v in _sessions.items():
+                if k[0] == proto and v["username"].lower() == identity.lower() and (
+                    not start_t or v["since"] == start_t
+                ):
+                    key, prev = k, v
+                    break
+
         if prev is not None:
-            delta = max(0, final_total - (prev[1] + prev[2]))
-            _finalized[key] = (prev[0], time.time())
+            _sessions.pop(key, None)
+            delta = max(0, final_total - (prev["recv"] + prev["sent"]))
+            _finalized[key] = (prev["since"], time.time())
         else:
             delta = final_total
-            _finalized[key] = (None, time.time())
+            if key is not None:
+                _finalized[key] = (start_t or None, time.time())
 
         if delta <= 0:
             return
 
         db = SessionLocal()
         try:
-            user = db.query(VpnUser).filter(VpnUser.username == common_name).first()
+            user = find_vpn_user(db, identity)
             if user is not None:
                 _record_usage(db, user, delta)
                 db.commit()
         except Exception:
             db.rollback()
-            logger.exception("finalize_disconnect failed for %s/%s", proto, common_name)
+            logger.exception("finalize_disconnect failed for %s/%s", proto, identity)
         finally:
             db.close()
 
@@ -235,11 +309,13 @@ def get_online_usernames() -> set[str]:
     """Usernames currently connected on either instance, based on the most
     recent poll. Cheap, in-memory, no DB/socket hit."""
     with _lock:
-        return {cn for (_proto, cn) in _last_seen.keys()}
+        return {s["username"] for s in _sessions.values()}
 
 
 def get_online_sessions() -> list[dict]:
     """Live sessions from the most recent poll (newest first)."""
     with _lock:
-        sessions = [dict(v) for k, v in _session_info.items() if k in _last_seen]
+        sessions = [
+            {k: v[k] for k in ("username", "proto", "ip", "since", "bytes")} for v in _sessions.values()
+        ]
     return sorted(sessions, key=lambda s: s["since"], reverse=True)

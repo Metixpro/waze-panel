@@ -9,6 +9,9 @@
 #   - sees it online and accounts its traffic (management interface)
 #   - doesn't double count when the session ends (client-disconnect hook)
 #   - cuts it off mid-session when it goes over quota, and refuses reconnects
+#   - handles username/password logins: password-only users on the shared
+#     certificate-less profile, certificate+password users, wrong passwords,
+#     impersonation attempts, device limits and password changes
 #   - revokes the certificate on delete (TLS-level rejection via the CRL)
 #   - keeps a CRL that won't expire any time soon
 # Everything it creates is removed again on exit.
@@ -47,6 +50,7 @@ ADMIN_PW="$(tr -dc A-Za-z0-9 </dev/urandom | head -c 20 || true)"
 VUSER="e2e$(tr -dc a-z0-9 </dev/urandom | head -c 6 || true)"
 COOKIES="$WORK/cookies"
 USER_ID=""
+EXTRA_IDS=()
 
 cli() { (cd "$APP_DIR" && ./venv/bin/python -m app.cli "$@"); }
 api() { curl -s --noproxy '*' -b "$COOKIES" "$@"; }
@@ -61,6 +65,7 @@ cleanup() {
   ip netns del "$NS" 2>/dev/null
   ip link del "$VETH_H" 2>/dev/null
   [ -n "$USER_ID" ] && api -X DELETE "$PANEL/api/users/$USER_ID" >/dev/null 2>&1
+  for id in "${EXTRA_IDS[@]}"; do api -X DELETE "$PANEL/api/users/$id" >/dev/null 2>&1; done
   cli delete-admin --username "$ADMIN" >/dev/null 2>&1
   if [ "${KEEP:-0}" = "1" ]; then echo "logs kept in $WORK"; else rm -rf "$WORK"; fi
 }
@@ -123,6 +128,37 @@ wait_offline() {  # the server waits ~5s after a client's exit notification
 }
 client_running() { [ -f "$WORK/$1.pid" ] && kill -0 "$(cat "$WORK/$1.pid")" 2>/dev/null; }
 
+# --- helpers for the login tests ---------------------------------------------
+field_of() { api "$PANEL/api/users/$1" | jget "['$2']"; }   # field_of <id> <field>
+local_cfg() { sed "s/^remote .* \([0-9]*\)$/remote $HOST_IP \1/"; }
+new_user() {  # new_user <json> -> sets NEW_ID
+  NEW_ID="$(api -H 'Content-Type: application/json' -d "$1" "$PANEL/api/users" | jget "['id']")"
+  EXTRA_IDS+=("$NEW_ID")
+}
+run_cfg() {  # run_cfg <name> <config> [user] [password] -> 0 once the tunnel is up
+  local name="$1" cfg="$2" log="$WORK/client-$1.log" auth=()
+  if [ -n "${3:-}" ]; then printf '%s\n%s\n' "$3" "${4:-}" > "$WORK/$name.auth"; auth=(--auth-user-pass "$WORK/$name.auth"); fi
+  : > "$log"
+  ip netns exec "$NS" openvpn --config "$cfg" --route-nopull --dev "tun$name$$" \
+    --daemon --writepid "$WORK/$name.pid" --log "$log" --verb 3 "${auth[@]}"
+  for _ in $(seq 1 25); do
+    grep -q "Initialization Sequence Completed" "$log" 2>/dev/null && return 0
+    grep -qE "AUTH_FAILED|Halt command was pushed|Exiting due to fatal error" "$log" 2>/dev/null && return 1
+    sleep 1
+  done
+  return 1
+}
+refused() { run_cfg "$@"; local rc=$?; stop_client "$1"; [ "$rc" -ne 0 ]; }
+said() { grep -aq "$2" "$WORK/client-$1.log"; }   # said <client> <text of the AUTH_FAILED reason>
+wait_online() {  # wait_online <id> True|False
+  for _ in $(seq 1 $((POLL + 12))); do
+    [ "$(field_of "$1" online)" = "$2" ] && return 0
+    sleep 1
+  done
+  return 1
+}
+wait_stopped() { for _ in $(seq 1 15); do client_running "$1" || return 0; sleep 1; done; return 1; }
+
 echo; echo "== UDP instance =="
 check "client connects over UDP (hook allows it)" start_client udp
 before="$(usage_of)"
@@ -146,6 +182,69 @@ after="$(usage_of)"
 check "~4 MB over TCP is accounted ($((after - before)) bytes)" ge $((after - before)) 4000000
 stop_client tcp
 
+echo; echo "== username / password logins =="
+PW="Pw-$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10 || true)"
+PUSER="e2ep$(tr -dc a-z0-9 </dev/urandom | head -c 5 || true)"
+CPUSER="e2ec$(tr -dc a-z0-9 </dev/urandom | head -c 5 || true)"
+new_user "{\"username\":\"$PUSER\",\"auth_mode\":\"pass\",\"password\":\"$PW\"}"; P_ID="$NEW_ID"
+new_user "{\"username\":\"$CPUSER\",\"auth_mode\":\"cert_pass\"}"; CP_ID="$NEW_ID"
+CP_PW="$(field_of "$CP_ID" password)"
+VUSER_PW="$(field_of "$USER_ID" password)"
+check "password-only user keeps the password it was given" [ "$(field_of "$P_ID" password)" = "$PW" ]
+check "certificate+password user gets a generated password" [ "${#CP_PW}" -ge 8 ]
+
+api "$PANEL/api/settings/shared-config/udp" | local_cfg > "$WORK/shared-udp.ovpn"
+api "$PANEL/api/settings/shared-config/tcp" | local_cfg > "$WORK/shared-tcp.ovpn"
+check "shared profile has no client certificate and asks for a login" \
+  bash -c "! grep -q '<cert>' '$WORK/shared-udp.ovpn' && grep -q '^auth-user-pass' '$WORK/shared-udp.ovpn' && grep -q '<tls-crypt>' '$WORK/shared-udp.ovpn'"
+
+check "password-only user connects with the shared profile (UDP)" run_cfg pw "$WORK/shared-udp.ovpn" "$PUSER" "$PW"
+check "...and shows up online" wait_online "$P_ID" True
+before="$(field_of "$P_ID" data_used_bytes)"
+pull_traffic 10.8.0.1 1
+sleep $((POLL + 3))
+after="$(field_of "$P_ID" data_used_bytes)"
+check "...and its traffic is accounted to it ($((after - before)) bytes)" ge $((after - before)) 4000000
+stop_client pw
+check "...goes offline after disconnecting" wait_online "$P_ID" False
+settled="$(field_of "$P_ID" data_used_bytes)"; sleep $((POLL + 2))
+check "...without double counting" [ "$(field_of "$P_ID" data_used_bytes)" = "$settled" ]
+check "username is case-insensitive (phone keyboards), over TCP" run_cfg pwc "$WORK/shared-tcp.ovpn" "${PUSER^}" "$PW"
+stop_client pwc
+
+check "wrong password is refused" refused bad "$WORK/shared-udp.ovpn" "$PUSER" "wrong-$PW"
+check "...and the app is told why" said bad "Wrong username or password"
+check "a certificate user can't log in with just its password" refused nocert "$WORK/shared-udp.ovpn" "$VUSER" "$VUSER_PW"
+check "...and is told to use its own config" said nocert "own config"
+
+api "$PANEL/api/users/$CP_ID/config/udp" | local_cfg > "$WORK/cp.ovpn"
+check "certificate+password profile asks for a login" grep -q '^auth-user-pass' "$WORK/cp.ovpn"
+check "certificate+password user connects with both" run_cfg cp "$WORK/cp.ovpn" "$CPUSER" "$CP_PW"
+stop_client cp
+grep -v '^auth-user-pass' "$WORK/cp.ovpn" > "$WORK/cp-nopass.ovpn"
+check "...but not with the certificate alone" refused cpn "$WORK/cp-nopass.ovpn"
+check "...nor with the certificate and a wrong password" refused cpw "$WORK/cp.ovpn" "$CPUSER" "nope-$CP_PW"
+check "...nor with the password alone (shared profile)" refused cps "$WORK/shared-udp.ovpn" "$CPUSER" "$CP_PW"
+check "another user's certificate can't log in as someone else" refused imp "$WORK/cp.ovpn" "$PUSER" "$PW"
+check "a certificate-only user sending someone's login stays itself" run_cfg imp2 "$WORK/udp.ovpn" "$PUSER" "$PW"
+sleep $((POLL + 3))
+check "...(the login is ignored: $PUSER stays offline)" [ "$(field_of "$P_ID" online)" = "False" ]
+stop_client imp2
+
+echo; echo "== device limit & password change =="
+api -X PATCH -H 'Content-Type: application/json' -d '{"max_devices":1}' "$PANEL/api/users/$P_ID" >/dev/null
+check "first device connects" run_cfg d1 "$WORK/shared-udp.ovpn" "$PUSER" "$PW"
+sleep 2
+check "second device connects too (newest wins)" run_cfg d2 "$WORK/shared-tcp.ovpn" "$PUSER" "$PW"
+check "...and the first one is disconnected" wait_stopped d1
+check "...while the second keeps running" client_running d2
+api -X PATCH -H 'Content-Type: application/json' -d '{"regenerate_password":true}' "$PANEL/api/users/$P_ID" >/dev/null
+check "password change cuts the open session right away" wait_stopped d2
+stop_client d1; stop_client d2
+check "...the old password no longer works" refused old "$WORK/shared-udp.ovpn" "$PUSER" "$PW"
+check "...the new one does" run_cfg new "$WORK/shared-udp.ovpn" "$PUSER" "$(field_of "$P_ID" password)"
+stop_client new
+
 echo; echo "== quota enforcement =="
 check "reconnects over UDP" start_client udp
 limit_gb="$(python3 -c "print($(usage_of) / 2 / 1024**3)")"
@@ -162,6 +261,7 @@ stop_client udp
 start_client udp; rc=$?
 check "reconnect is refused while over quota" [ "$rc" -ne 0 ]
 check "...and the client is told to stop (AUTH_FAILED/HALT)" grep -qE "AUTH_FAILED|Halt command was pushed" "$WORK/client-udp.log"
+check "...with the reason (data limit reached)" said udp "Data limit reached"
 stop_client udp
 
 echo; echo "== revocation =="

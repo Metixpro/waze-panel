@@ -21,6 +21,15 @@ class ClientSession:
     # identifies one connection, even across quick reconnects.
     connected_since_t: int
     client_id: int | None
+    # Login name the client sent ("UNDEF"/"" when it sent none).
+    username: str = ""
+
+    @property
+    def identity(self) -> str:
+        """Who this session belongs to: the certificate CN, or -- for a
+        password-only client that presented no certificate, whose CN
+        OpenVPN reports as UNDEF -- the username it logged in with."""
+        return self.common_name if self.common_name != "UNDEF" else self.username
 
 
 def _talk(port: int, command: str, stop_prefixes=("END", "SUCCESS:", "ERROR:")) -> list[str]:
@@ -71,7 +80,8 @@ def get_client_sessions(port: int) -> list[ClientSession]:
         # CLIENT_LIST, CN, real addr, virt addr, virt ipv6, bytes recv,
         # bytes sent, connected since, connected since (time_t), username,
         # client id, peer id, data channel cipher
-        if parts[1] == "UNDEF":
+        username = parts[9] if len(parts) > 9 and parts[9] != "UNDEF" else ""
+        if parts[1] == "UNDEF" and not username:
             continue  # handshake not finished yet
         sessions.append(
             ClientSession(
@@ -83,29 +93,33 @@ def get_client_sessions(port: int) -> list[ClientSession]:
                 connected_since=parts[7],
                 connected_since_t=_to_int(parts[8]),
                 client_id=_to_int(parts[10], -1) if len(parts) > 10 else None,
+                username=username,
             )
         )
     return sessions
 
 
-def kill_client(port: int, common_name: str, client_id: int | None = None) -> bool:
-    """Disconnect a client. With a client id we send HALT, which tells the
-    OpenVPN client to stop instead of immediately reconnecting (and getting
-    rejected again) in a loop."""
+def kill_client(port: int, real_address: str, client_id: int | None = None) -> bool:
+    """Disconnect one session. With a client id we send HALT, which tells
+    the OpenVPN client to stop instead of immediately reconnecting (and
+    getting rejected again) in a loop. `kill ip:port` is the fallback; it
+    also works for certificate-less sessions, which have no CN to kill by."""
     if client_id is not None and client_id >= 0:
         lines = _talk(port, f"client-kill {client_id} HALT")
         if any(l.startswith("SUCCESS") for l in lines):
             return True
-    lines = _talk(port, f"kill {common_name}")
+    lines = _talk(port, f"kill {real_address}")
     return any(l.startswith("SUCCESS") for l in lines)
 
 
-def kill_everywhere(ports, common_name: str) -> None:
+def kill_everywhere(ports, identity: str) -> None:
+    """Disconnect every session of one user, on every instance."""
+    wanted = identity.lower()
     for port in ports:
         try:
             for s in get_client_sessions(port):
-                if s.common_name == common_name:
-                    kill_client(port, common_name, s.client_id)
+                if s.identity.lower() == wanted:
+                    kill_client(port, s.real_address, s.client_id)
         except ManagementError:
             pass
 

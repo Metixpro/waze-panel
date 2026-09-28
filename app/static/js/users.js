@@ -47,9 +47,16 @@ function expiryCell(u) {
 
 function seenCell(u) {
   if (u.online) {
-    return `<span class="badge active"><i></i>آنلاین · ${u.online_protos.map((p) => p.toUpperCase()).join(" + ")}</span><small class="mono">${esc(u.last_ip || "")}</small>`;
+    const devs = u.devices_online > 1 ? ` · ${fa(u.devices_online)} دستگاه` : "";
+    return `<span class="badge active"><i></i>آنلاین · ${u.online_protos.map((p) => p.toUpperCase()).join(" + ")}${devs}</span><small class="mono">${esc(u.last_ip || "")}</small>`;
   }
   return `${relTime(u.last_connected_at)}${u.last_ip ? `<small class="mono">${esc(u.last_ip)}</small>` : ""}`;
+}
+
+function authTag(u) {
+  if (!u.auth_mode || u.auth_mode === "cert") return "";
+  const a = AUTH[u.auth_mode];
+  return `<span class="auth-tag pw" title="روش ورود: ${a.label}">${ic(a.icon)}${a.label}</span> · `;
 }
 
 function rowHtml(u) {
@@ -58,7 +65,7 @@ function rowHtml(u) {
       ${avatar(u.username, u.online)}
       <div class="grow">
         <div class="n mono" style="text-align:right">${esc(u.username)}</div>
-        <div class="note">${u.note ? esc(u.note) : `ساخته شده ${relTime(u.created_at)}`}</div>
+        <div class="note">${authTag(u)}${u.note ? esc(u.note) : `ساخته شده ${relTime(u.created_at)}`}</div>
       </div>
     </div>
     <div class="st">${statusBadge(u.status)}</div>
@@ -186,12 +193,16 @@ function drawerHtml(u) {
     </div>
 
     <div class="section">
-      <div class="section-title">${ic("download")} دانلود کانفیگ</div>
+      <div class="section-title">${ic("download")} ${u.auth_mode === "pass" ? "کانفیگ مشترک (بدون گواهی)" : "دانلود کانفیگ"}</div>
       <div class="row">
         <a class="btn grow" href="/api/users/${u.id}/config/udp">${ic("download")} UDP</a>
         <a class="btn grow" href="/api/users/${u.id}/config/tcp">${ic("download")} TCP</a>
       </div>
+      ${u.auth_mode === "pass" ? `<div class="hint">همه‌ی کاربران «فقط رمز» از همین فایل استفاده می‌کنند؛ فرقشان فقط نام کاربری و رمز است.</div>` : ""}
+      ${u.auth_mode === "cert_pass" ? `<div class="hint">فایل اختصاصی این کاربر است و هنگام اتصال، نام کاربری و رمز هم پرسیده می‌شود.</div>` : ""}
     </div>
+
+    ${loginSection(u)}
 
     <form class="section" id="edit-form" autocomplete="off">
       <div class="section-title">${ic("edit")} ویرایش</div>
@@ -209,7 +220,11 @@ function drawerHtml(u) {
           <input type="number" name="days" min="1" step="1" placeholder="نامحدود" value="${u.days_left ?? ""}" />
         </div>
       </div>
-      <div class="hint" style="margin-top:-6px; margin-bottom:12px">خالی بگذارید تا نامحدود شود.</div>
+      <div class="field">
+        <label>حداکثر دستگاه همزمان</label>
+        <input type="number" name="devices" min="0" max="100" step="1" placeholder="نامحدود" value="${u.max_devices || ""}" />
+      </div>
+      <div class="hint" style="margin-top:-6px; margin-bottom:12px">خالی بگذارید تا نامحدود شود. با پر شدن سقف دستگاه، اتصال جدیدتر می‌ماند و قدیمی‌تر قطع می‌شود.</div>
       <button class="btn primary block" type="submit">${ic("check")} ذخیره تغییرات</button>
     </form>
 
@@ -224,6 +239,35 @@ function drawerHtml(u) {
       </div>
     </div>
   </div>`;
+}
+
+function loginSection(u) {
+  const mode = u.auth_mode || "cert";
+  const modes = Object.entries(AUTH).map(([k, a]) =>
+    `<button type="button" class="mode ${k === mode ? "active" : ""}" data-act="mode" data-mode="${k}" role="radio" aria-checked="${k === mode}">${ic(a.icon)}<b>${a.label}</b></button>`
+  ).join("");
+  const devices = `${fa(u.devices_online || 0)} دستگاه آنلاین · سقف ${u.max_devices ? fa(u.max_devices) : "نامحدود"}`;
+  const pw = mode === "cert" ? "" : `
+      <div class="creds" style="margin-bottom:10px">${credRow("نام کاربری", u.username)}</div>
+      <form id="pw-form" autocomplete="off">
+        <div class="input-group two">
+          <input type="password" name="password" dir="ltr" class="mono" maxlength="64" spellcheck="false" autocomplete="off" value="${esc(u.password || "")}" aria-label="رمز اتصال" />
+          <button class="btn ghost" type="button" data-act="pw-eye" title="نمایش">${ic("eye")}</button>
+          <button class="btn ghost" type="button" data-act="pw-copy" title="کپی">${ic("copy")}</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button type="button" class="btn sm grow" data-act="pw-gen">${ic("dice")} رمز تصادفی</button>
+          <button type="submit" class="btn sm primary grow" id="pw-save" disabled>${ic("check")} ذخیره رمز</button>
+        </div>
+        <button type="button" class="btn sm block" data-act="share" style="margin-top:8px">${ic("copy")} کپی مشخصات ورود برای ارسال</button>
+        <div class="hint">با تغییر رمز یا روش ورود، اتصال فعلی کاربر قطع می‌شود.</div>
+      </form>`;
+  return `
+    <div class="section">
+      <div class="section-title">${ic("key")} ورود و امنیت <span class="muted" style="margin-inline-start:auto; font-size:11.5px; font-weight:600">${devices}</span></div>
+      <div class="modes" role="radiogroup">${modes}</div>
+      ${pw}
+    </div>`;
 }
 
 function drawUserChart(u) {
@@ -290,6 +334,34 @@ $("#drawer").addEventListener("click", async (ev) => {
   const u = currentUser;
   try {
     if (act === "copy") return copyText(u.sub_link, "لینک اشتراک کپی شد");
+    if (act === "share") return copyText(shareText(u), "مشخصات ورود کپی شد");
+    if (act === "pw-copy") return copyText($("#pw-form [name=password]").value, "رمز کپی شد");
+    if (act === "pw-eye") {
+      const inp = $("#pw-form [name=password]");
+      inp.type = inp.type === "password" ? "text" : "password";
+      el.innerHTML = ic(inp.type === "password" ? "eye" : "eye-off");
+      return;
+    }
+    if (act === "pw-gen") {
+      const inp = $("#pw-form [name=password]");
+      inp.value = randomPassword();
+      inp.type = "text";
+      inp.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
+    if (act === "mode") {
+      const mode = el.dataset.mode;
+      if (mode === (u.auth_mode || "cert")) return;
+      const msg = {
+        cert: "کاربر فقط با فایل اختصاصی خودش وصل می‌شود و رمز دیگر پرسیده نمی‌شود.",
+        cert_pass: "از این به بعد فایل اختصاصی و رمز هر دو لازم است.",
+        pass: "کاربر با فایل مشترک و نام کاربری و رمز وصل می‌شود.",
+      }[mode];
+      if (!(await confirmDialog({ title: `روش ورود: ${AUTH[mode].label}؟`,
+        message: `${msg} اتصال فعلی قطع می‌شود و کاربر باید کانفیگ را دوباره از لینک اشتراک دانلود کند.`,
+        ok: "تغییر روش ورود", danger: false, icon: "key" }))) return;
+      return await patchUser({ auth_mode: mode }, `روش ورود: ${AUTH[mode].label}`);
+    }
     if (act === "add-days") return await withBusy(el, () => patchUser({ add_days: +el.dataset.v }, `${fa(+el.dataset.v)} روز به اعتبار اضافه شد`));
     if (act === "add-gb") return await withBusy(el, () => patchUser({ add_gb: +el.dataset.v }, `${fa(+el.dataset.v)} گیگ به حجم اضافه شد`));
     if (act === "reset") {
@@ -328,7 +400,20 @@ $("#drawer").addEventListener("change", async (ev) => {
   }
 });
 
+$("#drawer").addEventListener("input", (ev) => {
+  if (ev.target.closest("#pw-form")) {
+    $("#pw-save").disabled = ev.target.value.trim() === (currentUser.password || "") || !ev.target.value.trim();
+  }
+});
+
 $("#drawer").addEventListener("submit", async (ev) => {
+  if (ev.target.id === "pw-form") {
+    ev.preventDefault();
+    const password = ev.target.password.value.trim();
+    return withBusy($("#pw-save"), async () => {
+      try { await patchUser({ password }, "رمز جدید ذخیره شد"); } catch (e) { toast(e.message, "error"); }
+    });
+  }
   if (ev.target.id !== "edit-form") return;
   ev.preventDefault();
   const f = new FormData(ev.target);
@@ -341,6 +426,8 @@ $("#drawer").addEventListener("submit", async (ev) => {
   // only send what actually changed, so saving a note doesn't nudge the expiry
   if (gb !== origGb) { if (gb === "" || +gb === 0) body.clear_limit = true; else body.data_limit_gb = +gb; }
   if (days !== origDays) { if (days === "") body.clear_expiry = true; else body.expire_days = +days; }
+  const devices = f.get("devices");
+  if (devices !== String(u.max_devices || "")) body.max_devices = devices ? +devices : 0;
   const btn = ev.target.querySelector("button[type=submit]");
   await withBusy(btn, async () => {
     try { await patchUser(body, "تغییرات ذخیره شد"); } catch (e) { toast(e.message, "error"); }
@@ -349,11 +436,41 @@ $("#drawer").addEventListener("submit", async (ev) => {
 
 /* ---------------------------------------------------------------- create */
 
-function openCreate() {
+const MODE_HINTS = {
+  cert: "کاربر با فایل کانفیگ اختصاصی خودش وصل می‌شود و رمزی لازم نیست.",
+  cert_pass: "فایل اختصاصی + نام کاربری و رمز هنگام اتصال؛ اگر فایل لو برود هم بدون رمز کار نمی‌کند.",
+  pass: "بدون گواهی اختصاصی: همه‌ی کاربران «فقط رمز» یک فایل مشترک دارند و با نام کاربری و رمز خودشان وارد می‌شوند.",
+};
+let createMode = "cert";
+
+function setCreateMode(mode) {
+  createMode = AUTH[mode] ? mode : "cert";
+  $$("#c-modes .mode").forEach((b) => {
+    const on = b.dataset.mode === createMode;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-checked", on);
+  });
+  const needs = createMode !== "cert";
+  $("#c-pass-field").classList.toggle("hide", !needs);
+  $("#c-pass").required = needs;
+  if (needs && !$("#c-pass").value) $("#c-pass").value = randomPassword();
+  $("#c-mode-hint").textContent = MODE_HINTS[createMode];
+  try { localStorage.setItem("waze-auth-mode", createMode); } catch (e) {}
+}
+
+function resetCreateForm() {
   $("#create-form").reset();
   $$("#presets .chip").forEach((c) => c.classList.remove("active"));
+  let mode = "cert";
+  try { mode = localStorage.getItem("waze-auth-mode") || "cert"; } catch (e) {}
+  $("#c-pass").value = "";
+  setCreateMode(mode); // the admin's last choice: resellers tend to stick to one
   $("#create-form-view").classList.remove("hide");
   $("#create-done-view").classList.add("hide");
+}
+
+function openCreate() {
+  resetCreateForm();
   openOverlay($("#modal-create"));
 }
 window.openCreate = openCreate;
@@ -365,6 +482,13 @@ $("#presets").addEventListener("click", (ev) => {
   $("#c-gb").value = chip.dataset.gb;
   $("#c-days").value = chip.dataset.days;
 });
+
+$("#c-modes").addEventListener("click", (ev) => {
+  const b = ev.target.closest(".mode");
+  if (b) setCreateMode(b.dataset.mode);
+});
+$("#c-pass-gen").addEventListener("click", () => { $("#c-pass").value = randomPassword(); });
+$("#c-pass-copy").addEventListener("click", () => copyText($("#c-pass").value, "رمز کپی شد"));
 
 $("#dice").addEventListener("click", () => {
   const words = ["user", "client", "vpn", "net", "sky", "nova", "zen", "star"];
@@ -381,6 +505,9 @@ $("#create-form").addEventListener("submit", async (ev) => {
     note: f.get("note") || null,
     data_limit_gb: f.get("data_limit_gb") ? +f.get("data_limit_gb") : null,
     expire_days: f.get("expire_days") ? +f.get("expire_days") : null,
+    auth_mode: createMode,
+    password: createMode !== "cert" ? $("#c-pass").value.trim() : null,
+    max_devices: f.get("max_devices") ? +f.get("max_devices") : 0,
   };
   await withBusy($("#create-submit"), async () => {
     try {
@@ -390,6 +517,12 @@ $("#create-form").addEventListener("submit", async (ev) => {
       $("#done-link").value = u.sub_link;
       $("#done-udp").href = `/api/users/${u.id}/config/udp`;
       $("#done-tcp").href = `/api/users/${u.id}/config/tcp`;
+      const creds = $("#done-creds");
+      creds.classList.toggle("hide", u.auth_mode === "cert");
+      if (u.auth_mode !== "cert") {
+        creds.innerHTML = credRow("نام کاربری", u.username) + credRow("رمز", u.password) +
+          `<button type="button" class="btn sm" id="done-share">${ic("copy")} کپی مشخصات برای ارسال</button>`;
+      }
       $("#create-form-view").classList.add("hide");
       $("#create-done-view").classList.remove("hide");
       renderQr($("#done-qr"), u.sub_link, 170);
@@ -401,11 +534,11 @@ $("#create-form").addEventListener("submit", async (ev) => {
 });
 
 $("#done-copy").addEventListener("click", () => copyText($("#done-link").value, "لینک اشتراک کپی شد"));
+$("#done-creds").addEventListener("click", (ev) => {
+  if (ev.target.closest("#done-share") && lastCreated) copyText(shareText(lastCreated), "مشخصات ورود کپی شد");
+});
 $("#done-another").addEventListener("click", () => {
-  $("#create-form").reset();
-  $$("#presets .chip").forEach((c) => c.classList.remove("active"));
-  $("#create-form-view").classList.remove("hide");
-  $("#create-done-view").classList.add("hide");
+  resetCreateForm();
   $("#c-username").focus();
 });
 $("#done-open").addEventListener("click", () => {

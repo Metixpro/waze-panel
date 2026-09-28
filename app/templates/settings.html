@@ -55,6 +55,31 @@
   </form>
 
   <div class="card">
+    <div class="card-head"><div class="card-title">{{ icon("lock") }} کانفیگ مشترک «فقط رمز»</div></div>
+    <p class="dim" style="font-size:13px; line-height:1.9; margin:0 0 16px">
+      یک فایل بدون گواهی برای همه‌ی کاربرانی که روش ورودشان «فقط رمز» است؛ هر کس با نام کاربری و رمز خودش وارد می‌شود.
+      مثلا در کانال یا ربات منتشرش کنید و فقط مشخصات ورود را جدا بفرستید.
+    </p>
+    <div class="row">
+      <a class="btn primary grow" href="/api/settings/shared-config/udp">{{ icon("download") }} UDP</a>
+      <a class="btn grow" href="/api/settings/shared-config/tcp">{{ icon("download") }} TCP</a>
+    </div>
+    <div class="hint" style="margin-top:12px">
+      {% if pass_users %}<span class="num">{{ pass_users }}</span> کاربر با این روش وارد می‌شوند.
+      {% else %}هنوز کاربری با روش «فقط رمز» ندارید؛ هنگام ساخت کاربر یا از جزئیات کاربر انتخابش کنید.{% endif %}
+      بدون مشخصات ورود معتبر، این فایل به‌تنهایی به هیچ حسابی دسترسی نمی‌دهد.
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-title">{{ icon("archive") }} پشتیبان‌گیری</div></div>
+    <p class="dim" style="font-size:13px; line-height:1.9; margin:0 0 16px">
+      یک فایل کامل شامل پایگاه‌داده، تنظیمات و <b>زیرساخت گواهی (CA)</b>. بدون CA، اگر سرور از دست برود همه‌ی کانفیگ‌های کاربران بی‌اعتبار می‌شوند؛ این فایل را بیرون از سرور نگه دارید.
+    </p>
+    <a class="btn primary" href="/api/settings/backup">{{ icon("download") }} دانلود فایل پشتیبان</a>
+    <div class="hint" style="margin-top:12px">بازگردانی روی سرور جدید (بعد از نصب پنل): <span class="mono">waze-panel restore &lt;file&gt;</span></div>
+  </div>
+
+  <div class="card span-2">
     <div class="card-head"><div class="card-title">{{ icon("palette") }} ظاهر</div></div>
     <div class="setting-row">
       <div><div class="t">تم پنل</div><div class="s">روی همین مرورگر ذخیره می‌شود.</div></div>
@@ -64,15 +89,6 @@
         <button data-theme-set="auto">خودکار</button>
       </div>
     </div>
-  </div>
-
-  <div class="card">
-    <div class="card-head"><div class="card-title">{{ icon("archive") }} پشتیبان‌گیری</div></div>
-    <p class="dim" style="font-size:13px; line-height:1.9; margin:0 0 16px">
-      یک فایل کامل شامل پایگاه‌داده، تنظیمات و <b>زیرساخت گواهی (CA)</b>. بدون CA، اگر سرور از دست برود همه‌ی کانفیگ‌های کاربران بی‌اعتبار می‌شوند؛ این فایل را بیرون از سرور نگه دارید.
-    </p>
-    <a class="btn primary" href="/api/settings/backup">{{ icon("download") }} دانلود فایل پشتیبان</a>
-    <div class="hint" style="margin-top:12px">بازگردانی روی سرور جدید (بعد از نصب پنل): <span class="mono">waze-panel restore &lt;file&gt;</span></div>
   </div>
 
   <div class="card span-2">

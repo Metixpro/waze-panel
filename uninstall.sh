@@ -43,6 +43,7 @@ log_ok "Services stopped."
 
 log_step "Removing systemd files"
 rm -f /etc/systemd/system/waze-panel.service /etc/systemd/system/waze-panel-nat.service
+rm -rf /etc/systemd/system/openvpn-server@waze-{udp,tcp}.service.d /etc/systemd/system/openvpn@waze-{udp,tcp}.service.d
 rm -f /usr/local/bin/waze-panel /etc/logrotate.d/waze-panel
 rm -f "${OVPN_DIR}/server/waze-udp.conf" "${OVPN_DIR}/server/waze-tcp.conf"
 rm -f "${OVPN_DIR}/waze-udp.conf" "${OVPN_DIR}/waze-tcp.conf"

@@ -65,7 +65,7 @@
     <div class="icon">{{ icon("bolt") }}</div>
     <div>
       <div class="t">UDP <span class="badge accent">پیشنهادی</span></div>
-      <div class="s">سریع‌تر و کم‌تاخیرتر · پورت <span class="num">{{ udp_port }}</span></div>
+      <div class="s">سریع‌تر و کم‌تاخیرتر، مناسب تماس و بازی</div>
     </div>
     <span class="btn icon sm soft go">{{ icon("download") }}</span>
   </a>
@@ -73,11 +73,23 @@
     <div class="icon" style="background:var(--sky-soft);color:var(--sky)">{{ icon("shield") }}</div>
     <div>
       <div class="t">TCP</div>
-      <div class="s">پایدارتر در شبکه‌های محدود · پورت <span class="num">{{ tcp_port }}</span></div>
+      <div class="s">پایدارتر در شبکه‌های محدود و اینترنت ضعیف</div>
     </div>
     <span class="btn icon sm soft go">{{ icon("download") }}</span>
   </a>
   <div class="hint" style="margin:-2px 6px 0">اگر با UDP وصل نشدید، کانفیگ TCP را امتحان کنید.</div>
+
+  {% if auth_mode != "cert" %}
+  <div class="card" style="padding:16px">
+    <div class="section-title">{{ icon("key") }} مشخصات ورود</div>
+    <div class="creds" id="sub-creds" data-u="{{ user.username }}" data-p="{{ user.auth_password or '' }}"></div>
+    <div class="hint" style="margin-top:10px">
+      {% if auth_mode == "pass" %}فایل کانفیگ بالا بین همه مشترک است؛ ورود شما با همین نام کاربری و رمز انجام می‌شود.
+      {% else %}کانفیگ بالا مخصوص شماست و هنگام اتصال، نام کاربری و رمز هم پرسیده می‌شود.{% endif %}
+      گزینه‌ی <b>Save password</b> را در اپ بزنید تا هر بار نپرسد.
+    </div>
+  </div>
+  {% endif %}
 
   <details class="more" open>
     <summary>{{ icon("info") }} راهنمای اتصال {{ icon("chevron-down", "chev") }}</summary>
@@ -93,6 +105,7 @@
           <li>اپلیکیشن رسمی OpenVPN Connect را از گوگل‌پلی نصب کنید.</li>
           <li>روی کانفیگ UDP (یا TCP) در بالا بزنید تا دانلود شود.</li>
           <li>فایل دانلودشده را باز کنید، OpenVPN را انتخاب کنید و بعد Add و اتصال را بزنید.</li>
+          {% if auth_mode != "cert" %}<li>وقتی اپ نام کاربری و رمز را پرسید، مشخصات ورود بالا را وارد کنید.</li>{% endif %}
         </ol>
         <a class="btn soft block" style="margin-top:14px" href="https://play.google.com/store/apps/details?id=net.openvpn.openvpn" target="_blank" rel="noopener">{{ icon("external") }} OpenVPN Connect در گوگل‌پلی</a>
       </div>
@@ -101,6 +114,7 @@
           <li>اپلیکیشن OpenVPN Connect را از اپ‌استور نصب کنید.</li>
           <li>روی کانفیگ UDP (یا TCP) بزنید؛ بعد از دانلود، گزینه‌ی اشتراک‌گذاری را بزنید و OpenVPN را انتخاب کنید.</li>
           <li>در اپ، Add و سپس اتصال را بزنید.</li>
+          {% if auth_mode != "cert" %}<li>وقتی اپ نام کاربری و رمز را پرسید، مشخصات ورود بالا را وارد کنید.</li>{% endif %}
         </ol>
         <a class="btn soft block" style="margin-top:14px" href="https://apps.apple.com/app/openvpn-connect/id590379981" target="_blank" rel="noopener">{{ icon("external") }} OpenVPN Connect در اپ‌استور</a>
       </div>
@@ -109,6 +123,7 @@
           <li>OpenVPN Connect را از سایت رسمی OpenVPN دانلود و نصب کنید.</li>
           <li>کانفیگ UDP (یا TCP) را دانلود کنید.</li>
           <li>در برنامه، Import Profile ← File را بزنید، فایل را انتخاب کنید و وصل شوید.</li>
+          {% if auth_mode != "cert" %}<li>وقتی اپ نام کاربری و رمز را پرسید، مشخصات ورود بالا را وارد کنید.</li>{% endif %}
         </ol>
         <a class="btn soft block" style="margin-top:14px" href="https://openvpn.net/client/" target="_blank" rel="noopener">{{ icon("external") }} دانلود OpenVPN Connect</a>
       </div>
@@ -117,6 +132,7 @@
           <li>OpenVPN Connect را برای macOS از سایت رسمی OpenVPN نصب کنید.</li>
           <li>کانفیگ UDP (یا TCP) را دانلود کنید.</li>
           <li>فایل را روی برنامه بکشید (یا Import Profile ← File) و وصل شوید.</li>
+          {% if auth_mode != "cert" %}<li>وقتی اپ نام کاربری و رمز را پرسید، مشخصات ورود بالا را وارد کنید.</li>{% endif %}
         </ol>
         <a class="btn soft block" style="margin-top:14px" href="https://openvpn.net/client/" target="_blank" rel="noopener">{{ icon("external") }} دانلود OpenVPN Connect</a>
       </div>
@@ -171,6 +187,9 @@
       if (this.open && !qrDone) { renderQr(document.getElementById("sub-qr"), location.href, 170); qrDone = true; }
     });
     document.getElementById("copy-link").addEventListener("click", function () { copyText(location.href, "لینک کپی شد"); });
+
+    var creds = document.getElementById("sub-creds");
+    if (creds) creds.innerHTML = credRow("نام کاربری", creds.dataset.u) + credRow("رمز", creds.dataset.p, { secret: true });
   })();
 </script>
 </body>

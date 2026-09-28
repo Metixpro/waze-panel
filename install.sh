@@ -12,8 +12,9 @@
 # are all kept.
 #
 # Usage:
-#   sudo bash install.sh                     # interactive
-#   sudo bash install.sh --yes               # non-interactive, sane defaults
+#   bash <(curl -Ls https://raw.githubusercontent.com/Metixpro/waze-panel/main/install.sh)
+#   sudo bash install.sh                     # from a checkout / downloaded file
+#   sudo bash install.sh --yes               # no questions at all
 #   sudo bash install.sh --help              # see all flags
 #
 set -euo pipefail
@@ -30,7 +31,14 @@ LOG_DIR="/var/log/openvpn"
 UDP_MGMT_PORT=7505
 TCP_MGMT_PORT=7506
 
-SCRIPT_SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Where the rest of the code is, when this script is run from a checkout.
+# Empty when it was piped in / fetched by the one-liner (`bash <(curl ...)`
+# makes BASH_SOURCE a /dev/fd pipe, `bash -c "$(curl ...)"` leaves it
+# empty): the code is then cloned from GitHub.
+SCRIPT_SOURCE_DIR=""
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+  SCRIPT_SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
 
 # ============================================================
 # Output helpers
@@ -114,8 +122,10 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# Questions are read from the terminal itself, so they still work when the
+# script arrives on stdin (`curl ... | bash`). No terminal -> defaults.
 INTERACTIVE=1
-if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then
+if [ "$ASSUME_YES" -eq 1 ] || ! { : </dev/tty; } 2>/dev/null; then
   INTERACTIVE=0
 fi
 
@@ -158,6 +168,24 @@ port_busy() {
   [ -n "$out" ] || return 1
   echo "$out" | grep -qE '"(openvpn|uvicorn)"' && return 1
   return 0
+}
+
+# free_port proto candidate... -> the first candidate that is free (and not
+# already picked for another service), else the next free port after the
+# last candidate.
+free_port() {
+  local proto="$1" p; shift
+  for p in "$@"; do
+    [ "$p" = "${PANEL_PORT:-}" ] && [ "$proto" = "tcp" ] && continue
+    port_busy "$proto" "$p" || { echo "$p"; return; }
+  done
+  p="${!#}"
+  while [ "$p" -lt 65535 ]; do
+    p=$((p + 1))
+    [ "$p" = "${PANEL_PORT:-}" ] && [ "$proto" = "tcp" ] && continue
+    port_busy "$proto" "$p" || { echo "$p"; return; }
+  done
+  echo "$1"
 }
 
 # ask_port "label" proto default -> a free, valid port
@@ -240,40 +268,87 @@ if [ "$UPGRADE" -eq 1 ]; then
 else
   log_step "Installation configuration"
 
+  # Ports given as flags are used as they are; the rest default to the
+  # usual ones, or the next free alternative if something already uses them.
+  EXPLICIT_PORTS="${PANEL_PORT} ${UDP_PORT} ${TCP_PORT}"
   if [ -z "$SERVER_ADDRESS" ]; then
     log_info "Detecting the server's public IP..."
-    DETECTED_IP="$(curl -4 -fsSL --max-time 5 https://ifconfig.me 2>/dev/null || true)"
-    [ -z "$DETECTED_IP" ] && DETECTED_IP="$(curl -4 -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || true)"
-    [ -z "$DETECTED_IP" ] && DETECTED_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
-    SERVER_ADDRESS=$(ask "Public server address (IP or domain) clients will connect to" "${DETECTED_IP:-YOUR_SERVER_IP}")
+    SERVER_ADDRESS="$(curl -4 -fsSL --max-time 5 https://ifconfig.me 2>/dev/null || true)"
+    [ -z "$SERVER_ADDRESS" ] && SERVER_ADDRESS="$(curl -4 -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+    [ -z "$SERVER_ADDRESS" ] && SERVER_ADDRESS="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
   fi
+  ADMIN_USER="${ADMIN_USER:-admin}"
+  [ -n "$SETUP_NGINX" ] || SETUP_NGINX=0
+  [ "$SKIP_NGINX" -eq 1 ] && SETUP_NGINX=0
 
-  ADMIN_USER=$(ask "Panel admin username" "${ADMIN_USER:-admin}")
-
-  if [ -z "$SETUP_NGINX" ]; then
-    wants_domain=$(ask_yn "Set up the panel with a domain and free SSL (Let's Encrypt)?" "n")
-    [ "$ASSUME_YES" -eq 1 ] && wants_domain="n"
-    if [ "$wants_domain" = "y" ]; then
-      SETUP_NGINX=1
-      DOMAIN=$(ask "Domain that points to this server" "")
-      [ -n "$DOMAIN" ] || { log_warn "No domain entered, skipping Nginx setup."; SETUP_NGINX=0; }
-    else
-      SETUP_NGINX=0
+  pick_ports() {
+    PANEL_PORT="${PANEL_PORT:-$(free_port tcp 8000 8080 2053)}"
+    UDP_PORT="${UDP_PORT:-$(free_port udp 1194 1195)}"
+    if [ -z "$TCP_PORT" ]; then
+      # with a domain, 443 serves the panel over HTTPS
+      if [ "$SETUP_NGINX" -eq 1 ]; then TCP_PORT="$(free_port tcp 8443 2083)"
+      else TCP_PORT="$(free_port tcp 443 8443 2083)"; fi
     fi
+  }
+  pick_ports
+
+  show_plan() {
+    local panel_url="http://${SERVER_ADDRESS:-<server-ip>}:${PANEL_PORT}"
+    [ "$SETUP_NGINX" -eq 1 ] && panel_url="https://${DOMAIN}"
+    echo
+    echo -e "    ${C_BOLD}Server address${C_RESET}   ${SERVER_ADDRESS:-${C_YELLOW}not detected${C_RESET}}"
+    echo -e "    ${C_BOLD}Panel${C_RESET}            ${panel_url}"
+    echo -e "    ${C_BOLD}Admin${C_RESET}            ${ADMIN_USER} ${ADMIN_PASS:+(password as given)}${ADMIN_PASS:-(a random password is generated)}"
+    echo -e "    ${C_BOLD}OpenVPN${C_RESET}          UDP ${UDP_PORT}  +  TCP ${TCP_PORT}"
+    [ "$SETUP_NGINX" -eq 1 ] || echo -e "    ${C_BOLD}HTTPS domain${C_RESET}     none (optional - choose 'c' to add one)"
+    echo
+  }
+
+  customize() {
+    SERVER_ADDRESS=$(ask "Public server address (IP or domain) clients will connect to" "${SERVER_ADDRESS:-YOUR_SERVER_IP}")
+    ADMIN_USER=$(ask "Panel admin username" "$ADMIN_USER")
+    if [ "$SKIP_NGINX" -eq 0 ]; then
+      wants_domain=$(ask_yn "Set up the panel with a domain and free SSL (Let's Encrypt)?" "$([ "$SETUP_NGINX" -eq 1 ] && echo y || echo n)")
+      if [ "$wants_domain" = "y" ]; then
+        DOMAIN=$(ask "Domain that points to this server" "${DOMAIN}")
+        if [ -n "$DOMAIN" ]; then SETUP_NGINX=1; else log_warn "No domain entered, skipping Nginx setup."; SETUP_NGINX=0; fi
+      else
+        SETUP_NGINX=0
+      fi
+    fi
+    PANEL_PORT=$(ask_port "Web panel port" tcp "$PANEL_PORT")
+    UDP_PORT=$(ask_port "OpenVPN port (UDP)" udp "$UDP_PORT")
+    if [ "$SETUP_NGINX" -eq 1 ] && [ "$TCP_PORT" = "443" ]; then
+      log_warn "Port 443 will serve the panel over HTTPS, so OpenVPN TCP needs another port."
+      TCP_PORT="$(free_port tcp 8443 2083)"
+    fi
+    TCP_PORT=$(ask_port "OpenVPN port (TCP)" tcp "$TCP_PORT")
+  }
+
+  show_plan
+  if [ "$INTERACTIVE" -eq 1 ]; then
+    if [ -z "$SERVER_ADDRESS" ]; then
+      log_warn "Could not detect this server's public IP; please enter it."
+      customize
+    else
+      read -r -p "    Press Enter to install with these settings, or type 'c' to change them: " choice </dev/tty || true
+      case "${choice:-}" in
+        c|C|change|customize) customize ;;
+        "") ;;
+        *) log_warn "Unknown answer '${choice}', continuing with the settings above." ;;
+      esac
+    fi
+  else
+    [ -n "$SERVER_ADDRESS" ] || die "Could not detect the server's public IP - pass it with --server-address."
+    # explicitly requested ports must really be free
+    for pp in "tcp:$PANEL_PORT" "udp:$UDP_PORT" "tcp:$TCP_PORT"; do
+      case " $EXPLICIT_PORTS " in *" ${pp#*:} "*)
+        port_busy "${pp%%:*}" "${pp#*:}" && die "${pp%%:*}/${pp#*:} is already in use by another program (see: ss -lnp | grep :${pp#*:}). Pick another with a flag."
+      esac
+    done
   fi
 fi
 [ "$SKIP_NGINX" -eq 1 ] && SETUP_NGINX=0
-
-if [ "$UPGRADE" -eq 0 ]; then
-  PANEL_PORT=$(ask_port "Web panel port" tcp "${PANEL_PORT:-8000}")
-  UDP_PORT=$(ask_port "OpenVPN port (UDP)" udp "${UDP_PORT:-1194}")
-  if [ "$SETUP_NGINX" -eq 1 ] && [ "${TCP_PORT:-443}" = "443" ]; then
-    log_warn "Port 443 will serve the panel over HTTPS, so OpenVPN TCP needs another port."
-    TCP_PORT=$(ask_port "OpenVPN port (TCP)" tcp "8443")
-  else
-    TCP_PORT=$(ask_port "OpenVPN port (TCP)" tcp "${TCP_PORT:-443}")
-  fi
-fi
 
 for p in "$PANEL_PORT" "$UDP_PORT" "$TCP_PORT"; do
   valid_port "$p" || die "Invalid port '$p'."
@@ -392,7 +467,7 @@ fi
 # ============================================================
 log_step "Deploying the panel code to ${APP_DIR}"
 
-if [ -f "${SCRIPT_SOURCE_DIR}/app/main.py" ]; then
+if [ -n "$SCRIPT_SOURCE_DIR" ] && [ -f "${SCRIPT_SOURCE_DIR}/app/main.py" ]; then
   if [ "$(readlink -f "$SCRIPT_SOURCE_DIR")" = "$(readlink -f "$APP_DIR" 2>/dev/null || echo __none__)" ]; then
     log_info "Already running from inside ${APP_DIR}; no copy needed."
   else
@@ -656,7 +731,19 @@ sed -e "s#__APP_DIR__#${APP_DIR}#g" -e "s#__PANEL_PORT__#${PANEL_PORT}#g" -e "s#
 # status loop right after this reports exactly what did or didn't come up.
 systemctl daemon-reload || true
 
-SERVICES=(waze-panel-nat.service "${OVPN_SERVICE_PREFIX}${UDP_CONF_NAME}" "${OVPN_SERVICE_PREFIX}${TCP_CONF_NAME}" waze-panel.service)
+# OpenVPN asks the panel about every login, so start it after the panel
+# (at boot too) -- clients connecting in between would be refused.
+for conf in "$UDP_CONF_NAME" "$TCP_CONF_NAME"; do
+  mkdir -p "/etc/systemd/system/${OVPN_SERVICE_PREFIX}${conf}.service.d"
+  cat > "/etc/systemd/system/${OVPN_SERVICE_PREFIX}${conf}.service.d/waze-panel.conf" <<'EOF'
+[Unit]
+After=waze-panel.service
+Wants=waze-panel.service
+EOF
+done
+systemctl daemon-reload || true
+
+SERVICES=(waze-panel-nat.service waze-panel.service "${OVPN_SERVICE_PREFIX}${UDP_CONF_NAME}" "${OVPN_SERVICE_PREFIX}${TCP_CONF_NAME}")
 for svc in "${SERVICES[@]}"; do
   systemctl enable "$svc" >/dev/null 2>&1 || true
   # restart (not just start) so an update actually loads the new code/config

@@ -9,7 +9,9 @@ from app.backup import create_backup
 from app.config import settings
 from app.database import get_db
 from app.deps import get_optional_admin
-from app.models import AdminUser
+from app.models import AdminUser, VpnUser
+from app.openvpn import certs
+from app.openvpn.templates import build_shared_ovpn
 from app.security import hash_password, verify_password
 from app.settings_store import set_value
 from app.templating import templates
@@ -29,7 +31,11 @@ class ChangePassword(BaseModel):
 
 
 @router.get("/settings")
-def settings_page(request: Request, admin: AdminUser | None = Depends(get_optional_admin)):
+def settings_page(
+    request: Request,
+    admin: AdminUser | None = Depends(get_optional_admin),
+    db: Session = Depends(get_db),
+):
     if not admin:
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse(
@@ -43,6 +49,7 @@ def settings_page(request: Request, admin: AdminUser | None = Depends(get_option
             "udp_port": settings.OVPN_UDP_PORT,
             "tcp_port": settings.OVPN_TCP_PORT,
             "panel_port": settings.PANEL_PORT,
+            "pass_users": db.query(VpnUser).filter(VpnUser.auth_mode == "pass").count(),
         },
     )
 
@@ -97,4 +104,23 @@ def download_backup(admin: AdminUser | None = Depends(get_optional_admin)):
         content=data,
         media_type="application/gzip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/api/settings/shared-config/{proto}")
+def download_shared_config(proto: str, admin: AdminUser | None = Depends(get_optional_admin)):
+    """The certificate-less profile every password-only user can use."""
+    if not admin:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if proto not in ("udp", "tcp"):
+        raise HTTPException(status_code=400, detail="invalid proto")
+    try:
+        content = build_shared_ovpn(proto)
+    except certs.CertError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    name = re.sub(r"[^A-Za-z0-9_-]+", "-", settings.SERVER_ADDRESS).strip("-") or "waze"
+    return Response(
+        content=content,
+        media_type="application/x-openvpn-profile",
+        headers={"Content-Disposition": f'attachment; filename="{name}-{proto}.ovpn"'},
     )

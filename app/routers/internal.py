@@ -1,9 +1,13 @@
-"""Endpoints called only from the local client-connect / client-disconnect
-hook scripts (127.0.0.1, shared-secret header). Never exposed publicly --
-main.py should make sure Uvicorn only binds where Nginx/the firewall keep
-this reachable from localhost, and the shared token keeps other local
-processes from being able to spoof hook calls."""
+"""Endpoints called only from the local OpenVPN hook scripts (127.0.0.1,
+shared-secret header). Never exposed publicly -- main.py should make sure
+Uvicorn only binds where Nginx/the firewall keep this reachable from
+localhost, and the shared token keeps other local processes from being able
+to spoof hook calls."""
 import hmac
+import logging
+import threading
+import time
+from collections import deque
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
@@ -11,12 +15,27 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import VpnUser
-from app.openvpn.scheduler import finalize_disconnect
+from app.models import VpnUser, find_vpn_user
+from app.openvpn.scheduler import enforce_device_limit_soon, finalize_disconnect
 
 router = APIRouter(prefix="/internal")
+logger = logging.getLogger("waze_panel.auth")
 
 _LOOPBACK = {"127.0.0.1", "::1"}
+
+# Shown by the VPN app next to AUTH_FAILED. Plain ASCII: clients don't all
+# render Persian, and password failures stay deliberately vague.
+_REASONS = {
+    "disabled": "Account disabled",
+    "expired": "Account expired - renew it from your subscription link",
+    "over_quota": "Data limit reached - renew it from your subscription link",
+    "revoked": "Account removed",
+    "unknown_user": "Unknown account",
+    "cert_required": "This account needs its own config file (download it from your subscription link)",
+    "password_required": "This account now needs a username and password - download the new config from your subscription link",
+    "bad_credentials": "Wrong username or password",
+    "throttled": "Too many failed attempts - try again in a few minutes",
+}
 
 
 def _check_caller(request: Request, x_internal_token: str | None) -> None:
@@ -31,16 +50,128 @@ def _check_caller(request: Request, x_internal_token: str | None) -> None:
         raise HTTPException(status_code=403, detail="forbidden")
 
 
+def _deny(reason: str) -> dict:
+    return {"allow": False, "reason": reason, "message": _REASONS.get(reason, "Access denied")}
+
+
+# ---------------------------------------------------------------- throttling
+# Failed password logins, remembered per (username, ip) and per ip. Guessing
+# needs the tls-crypt key first (i.e. a copy of some config), so this is
+# about stopping one customer from brute-forcing another's password.
+_FAIL_WINDOW = 600
+_MAX_FAILS_PER_LOGIN = 8
+_MAX_FAILS_PER_IP = 30
+_fail_lock = threading.Lock()
+_fails: dict[str, deque] = {}
+
+
+def _recent(key: str, now: float) -> deque:
+    q = _fails.setdefault(key, deque())
+    while q and now - q[0] > _FAIL_WINDOW:
+        q.popleft()
+    return q
+
+
+def _throttled(login: str, ip: str) -> bool:
+    now = time.time()
+    with _fail_lock:
+        return (
+            len(_recent(f"u:{login}|{ip}", now)) >= _MAX_FAILS_PER_LOGIN
+            or len(_recent(f"ip:{ip}", now)) >= _MAX_FAILS_PER_IP
+        )
+
+
+def _note_failure(login: str, ip: str) -> None:
+    now = time.time()
+    with _fail_lock:
+        _recent(f"u:{login}|{ip}", now).append(now)
+        _recent(f"ip:{ip}", now).append(now)
+        if len(_fails) > 5000:  # forget idle entries
+            for key in [k for k, q in _fails.items() if not q or now - q[-1] > _FAIL_WINDOW]:
+                _fails.pop(key, None)
+
+
+def _password_ok(user: VpnUser, password: str) -> bool:
+    if not user.auth_password or not password:
+        return False
+    return hmac.compare_digest(user.auth_password.encode(), password.encode())
+
+
+# --------------------------------------------------------------------- hooks
+class AuthPayload(BaseModel):
+    proto: str
+    # CN of the client certificate, empty when the client presented none
+    common_name: str = ""
+    username: str = ""
+    password: str = ""
+    ip: str = ""
+
+
 class ConnectPayload(BaseModel):
-    common_name: str
     proto: str
+    common_name: str = ""
+    username: str = ""
+    # "ip:port" + start time identify the session (see scheduler.py)
+    real_address: str = ""
+    start_t: int = 0
 
 
-class DisconnectPayload(BaseModel):
-    common_name: str
-    proto: str
+class DisconnectPayload(ConnectPayload):
     bytes_sent: int = 0
     bytes_received: int = 0
+
+
+def _authenticate(db: Session, p: AuthPayload) -> tuple[VpnUser | None, str | None]:
+    """(user, None) on success, (user-or-None, reason) on failure."""
+    if p.common_name:
+        user = find_vpn_user(db, p.common_name)
+        if user is None:
+            return None, "unknown_user"
+        if user.auth_mode == "cert":
+            return user, None  # any username/password sent along is ignored
+        # cert_pass -- and a password-only user who happens to present
+        # their certificate -- must also log in, as themselves.
+        if not p.username:
+            return user, "password_required"
+        if p.username.lower() != user.username.lower() or not _password_ok(user, p.password):
+            return user, "bad_credentials"
+        return user, None
+
+    # No certificate: only password-only accounts may log in like this.
+    if not p.username:
+        return None, "cert_required"
+    user = find_vpn_user(db, p.username)
+    if user is None or not _password_ok(user, p.password):
+        return user, "bad_credentials"
+    if user.auth_mode != "pass":
+        # right password, but this account also needs its certificate
+        return user, "cert_required"
+    return user, None
+
+
+@router.post("/hooks/auth")
+def hook_auth(
+    payload: AuthPayload,
+    request: Request,
+    x_internal_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    _check_caller(request, x_internal_token)
+
+    login = (payload.username or payload.common_name).lower()
+    if _throttled(login, payload.ip):
+        logger.warning("auth throttled: login=%r ip=%s", login, payload.ip)
+        return _deny("throttled")
+
+    user, reason = _authenticate(db, payload)
+    if reason:
+        if reason == "bad_credentials":
+            _note_failure(login, payload.ip)
+        logger.info("auth failed (%s): cn=%r login=%r ip=%s", reason, payload.common_name, payload.username, payload.ip)
+        return _deny(reason)
+    if not user.is_usable():
+        return _deny(user.status_label())
+    return {"allow": True}
 
 
 @router.post("/hooks/connect")
@@ -52,12 +183,18 @@ def hook_connect(
 ):
     _check_caller(request, x_internal_token)
 
-    user = db.query(VpnUser).filter(VpnUser.username == payload.common_name).first()
+    user = find_vpn_user(db, payload.common_name or payload.username)
     if user is None:
-        return {"allow": False, "reason": "unknown_user"}
+        return _deny("unknown_user")
+    # The auth hook already enforced this; checked again so a server config
+    # without it can never let a certificate-less client in.
+    if not payload.common_name and user.auth_mode != "pass":
+        return _deny("cert_required")
     if not user.is_usable():
-        return {"allow": False, "reason": user.status_label()}
+        return _deny(user.status_label())
 
+    if user.max_devices:
+        enforce_device_limit_soon(user.username, user.max_devices)
     return {"allow": True}
 
 
@@ -69,6 +206,11 @@ def hook_disconnect(
 ):
     _check_caller(request, x_internal_token)
     finalize_disconnect(
-        payload.proto, payload.common_name, payload.bytes_received, payload.bytes_sent
+        payload.proto,
+        payload.common_name or payload.username,
+        payload.bytes_received,
+        payload.bytes_sent,
+        real_address=payload.real_address,
+        start_t=payload.start_t,
     )
     return {"ok": True}

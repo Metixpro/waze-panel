@@ -53,14 +53,18 @@
 
 ## 🚀 نصب
 
-روی سرور **Ubuntu 22.04 / 24.04** یا **Debian 12** با دسترسی root:
+روی سرور **Ubuntu 22.04 / 24.04** یا **Debian 12** با کاربر root فقط همین یک خط:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Metixpro/waze-panel/main/install.sh -o install.sh
-sudo bash install.sh
+bash <(curl -Ls https://raw.githubusercontent.com/Metixpro/waze-panel/main/install.sh)
 ```
 
-نصب‌کننده آدرس سرور، یوزرنیم ادمین، پورت‌ها (با بررسی اشغال نبودن) و در صورت تمایل دامنه را می‌پرسد و در پایان آدرس پنل و رمز را نشان می‌دهد. نصب بدون سؤال: `sudo bash install.sh --yes`
+نصب‌کننده آی‌پی سرور را خودش پیدا می‌کند، پورت‌های آزاد را انتخاب می‌کند و یک خلاصه نشان می‌دهد:
+**Enter** = شروع نصب، **c** = تغییر تنظیمات (آدرس، یوزرنیم ادمین، دامنه و SSL، پورت‌ها). در پایان آدرس پنل و رمز ادمین نمایش داده می‌شود.
+
+- با sudo (کاربر غیر root): `sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/Metixpro/waze-panel/main/install.sh)"` — حالت `sudo bash <(...)` کار نمی‌کند چون sudo آن ورودی را می‌بندد.
+- بدون هیچ سؤالی: در انتهای همان دستور ` --yes` بگذارید (مثلا `bash <(curl -Ls …/install.sh) --yes`).
+- روی سروری که پنل نصب است، همین دستور = **به‌روزرسانی** (همه‌چیز حفظ می‌شود).
 
 > پنل به Python 3.10 یا جدیدتر نیاز دارد؛ روی Ubuntu 20.04 و Debian 11 نصب‌کننده همان ابتدا با پیام واضح متوقف می‌شود.
 

@@ -40,3 +40,12 @@ management 127.0.0.1 __TCP_MGMT_PORT__
 script-security 2
 client-connect __APP_DIR__/scripts/client-connect-tcp.py
 client-disconnect __APP_DIR__/scripts/client-disconnect-tcp.py
+
+# Username/password logins (per user, set in the panel). Every client runs
+# through the auth hook: certificate-only users need no credentials,
+# "certificate + password" users need both, and password-only users may
+# connect with the shared certificate-less profile. Never add
+# username-as-common-name: it would let a certificate log in as another user.
+verify-client-cert optional
+auth-user-pass-verify __APP_DIR__/scripts/auth-verify-tcp.py via-file
+auth-user-pass-optional

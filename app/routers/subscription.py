@@ -37,9 +37,8 @@ def subscription_page(token: str, request: Request, db: Session = Depends(get_db
             "status_label": status_label,
             "usage_percent": usage_percent,
             "panel_title": settings.PANEL_TITLE,
-            "udp_port": settings.OVPN_UDP_PORT,
-            "tcp_port": settings.OVPN_TCP_PORT,
             "days_left": user.days_left(),
+            "auth_mode": user.auth_mode or "cert",
         },
     )
 
@@ -51,7 +50,7 @@ def subscription_download(token: str, proto: str, db: Session = Depends(get_db))
     user = _get_user_or_404(token, db)
 
     try:
-        content = build_ovpn(user.username, proto)
+        content = build_ovpn(user.username, proto, user.auth_mode)
     except certs.CertError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

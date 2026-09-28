@@ -58,7 +58,7 @@
     <div class="modal-head">
       <div>
         <h3>کاربر جدید</h3>
-        <p>یک گواهی اختصاصی ساخته می‌شود که هم با UDP و هم با TCP کار می‌کند.</p>
+        <p>کانفیگ هم با UDP و هم با TCP کار می‌کند؛ روش ورود را پایین‌تر انتخاب کنید.</p>
       </div>
       <button class="btn icon sm ghost" data-close title="بستن">{{ icon("x") }}</button>
     </div>
@@ -94,6 +94,27 @@
           <input id="c-days" name="expire_days" type="number" min="1" step="1" placeholder="نامحدود" />
         </div>
       </div>
+      <label>روش ورود</label>
+      <div class="modes" id="c-modes" role="radiogroup">
+        <button type="button" class="mode active" data-mode="cert" role="radio">{{ icon("cert") }}<b>گواهی</b><small>فایل اختصاصی، بدون رمز</small></button>
+        <button type="button" class="mode" data-mode="cert_pass" role="radio">{{ icon("shield-check") }}<b>گواهی + رمز</b><small>دو مرحله‌ای، امن‌ترین</small></button>
+        <button type="button" class="mode" data-mode="pass" role="radio">{{ icon("lock") }}<b>فقط رمز</b><small>یک کانفیگ برای همه</small></button>
+      </div>
+      <div class="field-row">
+        <div class="field hide" id="c-pass-field">
+          <label for="c-pass">رمز اتصال</label>
+          <div class="input-group two">
+            <input id="c-pass" name="password" type="text" dir="ltr" class="mono" autocomplete="off" spellcheck="false" maxlength="64" />
+            <button class="btn ghost" type="button" id="c-pass-gen" title="رمز تصادفی">{{ icon("dice") }}</button>
+            <button class="btn ghost" type="button" id="c-pass-copy" title="کپی">{{ icon("copy") }}</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="c-devices">حداکثر دستگاه همزمان</label>
+          <input id="c-devices" name="max_devices" type="number" min="0" max="100" step="1" placeholder="نامحدود" />
+        </div>
+      </div>
+      <div class="hint" id="c-mode-hint" style="margin:-6px 0 4px"></div>
       <div class="modal-foot">
         <button type="submit" class="btn primary" id="create-submit">{{ icon("check") }} ساخت کاربر</button>
         <button type="button" class="btn ghost" data-close>انصراف</button>
@@ -106,6 +127,7 @@
     <h3 style="margin:0 0 4px; font-size:18px">کاربر <span class="mono" id="done-name"></span> آماده است</h3>
     <p class="dim" style="margin:0 0 16px; font-size:13px">لینک اشتراک یا QR را برای کاربر بفرستید؛ دانلود کانفیگ و میزان مصرف همان‌جاست.</p>
     <div class="qr-box" id="done-qr"></div>
+    <div class="creds hide" id="done-creds" style="margin-top:14px; text-align:right"></div>
     <div class="input-group" style="margin-top:14px">
       <input type="text" id="done-link" class="mono" readonly />
       <button class="btn ghost" type="button" id="done-copy" title="کپی">{{ icon("copy") }}</button>
