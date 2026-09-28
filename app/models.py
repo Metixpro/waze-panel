@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -108,6 +109,13 @@ class VpnUser(Base):
     # newest connection wins, older ones are disconnected.
     max_devices: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
+    # Personal tls-crypt-v2 key (app/openvpn/tlscrypt.py). The id is sealed
+    # inside the key and checked on every connection, so issuing a new key
+    # retires every copy of the old config at once.
+    tls_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tls_key_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    tls_key_seen_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+
     @property
     def needs_password(self) -> bool:
         return self.auth_mode in ("cert_pass", "pass")
@@ -183,7 +191,7 @@ class Setting(Base):
     __tablename__ = "settings"
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    value: Mapped[str] = mapped_column(String(512))
+    value: Mapped[str] = mapped_column(Text)
 
 
 class RelayServer(Base):

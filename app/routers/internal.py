@@ -3,6 +3,7 @@ shared-secret header). Never exposed publicly -- main.py should make sure
 Uvicorn only binds where Nginx/the firewall keep this reachable from
 localhost, and the shared token keeps other local processes from being able
 to spoof hook calls."""
+import datetime
 import hmac
 import logging
 import threading
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import VpnUser, find_vpn_user
+from app.openvpn import tlscrypt
 from app.openvpn.scheduler import enforce_device_limit_soon, finalize_disconnect
 from app.relays import relay_names_by_ip
 
@@ -123,6 +125,12 @@ class ConnectPayload(BaseModel):
     start_t: int = 0
 
 
+class TlsCryptPayload(BaseModel):
+    # what the panel sealed into the key: "u:<username>:<key id>" / "s:<key id>"
+    metadata: str = ""
+    ip: str = ""
+
+
 class DisconnectPayload(ConnectPayload):
     bytes_sent: int = 0
     bytes_received: int = 0
@@ -221,3 +229,25 @@ def hook_disconnect(
         start_t=payload.start_t,
     )
     return {"ok": True}
+
+
+@router.post("/hooks/tlscrypt")
+def hook_tlscrypt(
+    payload: TlsCryptPayload,
+    request: Request,
+    x_internal_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Before the TLS handshake of a client with a personal key: is the key
+    still the current one of an existing user?"""
+    _check_caller(request, x_internal_token)
+    ok, user = tlscrypt.check_metadata(db, payload.metadata[:256])
+    if not ok:
+        logger.info("tls-crypt-v2 key refused: %r ip=%s", payload.metadata[:80], payload.ip)
+        return {"allow": False}
+    if user is not None:
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        if user.tls_key_seen_at is None or (now - user.tls_key_seen_at).total_seconds() > 60:
+            user.tls_key_seen_at = now
+            db.commit()
+    return {"allow": True}

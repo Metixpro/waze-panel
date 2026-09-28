@@ -59,7 +59,7 @@ def subscription_download(token: str, proto: str, db: Session = Depends(get_db))
     user = _get_user_or_404(token, db)
 
     try:
-        content = build_ovpn(user.username, proto, user.auth_mode)
+        content = build_ovpn(db, user, proto)
     except certs.CertError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

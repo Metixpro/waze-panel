@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
 
+from app import connection
 from app.config import settings
 from app.database import SessionLocal, init_db
 from app.openvpn.scheduler import start_scheduler, stop_scheduler
@@ -27,6 +28,8 @@ async def lifespan(_app: FastAPI):
     db = SessionLocal()
     try:
         load_overrides(db)
+        # extra ports, OpenVPN include files, the HTTPS cover site
+        connection.startup(db)
     finally:
         db.close()
     start_scheduler()

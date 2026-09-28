@@ -14,12 +14,20 @@
 #     impersonation attempts, device limits and password changes
 #   - routes clients through a relay server (relay.sh, in its own namespace)
 #     and falls back to the direct address when the relay is down
+#   - gives every user a personal tls-crypt-v2 key and retires a leaked one
+#     without touching anyone else ("new key")
+#   - forwards extra ports to each instance, and clients move on to the next
+#     port by themselves when their network blocks one
 #   - revokes the certificate on delete (TLS-level rejection via the CRL)
 #   - keeps a CRL that won't expire any time soon
+# With RESTARTS=1 it also switches the key mode (shared/compat/per_user) and
+# the HTTPS cover on and off; both restart OpenVPN, so every connected user
+# reconnects once. The original settings are put back at the end.
 # Everything it creates is removed again on exit.
 #
 # Usage: sudo bash tests/e2e.sh        (needs root, /dev/net/tun, ip, openvpn)
 #        KEEP=1 sudo bash tests/e2e.sh   keep client configs/logs for debugging
+#        RESTARTS=1 sudo bash tests/e2e.sh   include the tests that restart OpenVPN
 #
 set -uo pipefail
 
@@ -73,6 +81,9 @@ cleanup() {
   ip link del "$VETH_H" 2>/dev/null
   ip link del "wzk$$" 2>/dev/null
   [ -n "${RELAY_ID:-}" ] && api -X DELETE "$PANEL/api/relays/$RELAY_ID" >/dev/null 2>&1
+  [ -n "${ORIG_PORTS:-}" ] && api -H 'Content-Type: application/json' -d "$ORIG_PORTS" "$PANEL/api/settings/connection/ports" >/dev/null 2>&1
+  [ -n "${ORIG_COVER:-}" ] && api -H 'Content-Type: application/json' -d "{\"enabled\":$ORIG_COVER}" "$PANEL/api/settings/connection/cover" >/dev/null 2>&1
+  [ -n "${ORIG_MODE:-}" ] && api -H 'Content-Type: application/json' -d "{\"mode\":\"$ORIG_MODE\"}" "$PANEL/api/settings/connection/keys" >/dev/null 2>&1
   [ -n "$USER_ID" ] && api -X DELETE "$PANEL/api/users/$USER_ID" >/dev/null 2>&1
   for id in "${EXTRA_IDS[@]}"; do api -X DELETE "$PANEL/api/users/$id" >/dev/null 2>&1; done
   cli delete-admin --username "$ADMIN" >/dev/null 2>&1
@@ -212,7 +223,7 @@ check "certificate+password user gets a generated password" [ "${#CP_PW}" -ge 8 
 api "$PANEL/api/settings/shared-config/udp" | local_cfg > "$WORK/shared-udp.ovpn"
 api "$PANEL/api/settings/shared-config/tcp" | local_cfg > "$WORK/shared-tcp.ovpn"
 check "shared profile has no client certificate and asks for a login" \
-  bash -c "! grep -q '<cert>' '$WORK/shared-udp.ovpn' && grep -q '^auth-user-pass' '$WORK/shared-udp.ovpn' && grep -q '<tls-crypt>' '$WORK/shared-udp.ovpn'"
+  bash -c "! grep -q '<cert>' '$WORK/shared-udp.ovpn' && grep -q '^auth-user-pass' '$WORK/shared-udp.ovpn' && grep -q '<tls-crypt' '$WORK/shared-udp.ovpn'"
 
 check "password-only user connects with the shared profile (UDP)" run_cfg pw "$WORK/shared-udp.ovpn" "$PUSER" "$PW"
 check "...and shows up online" wait_online "$P_ID" True
@@ -315,13 +326,122 @@ api -H 'Content-Type: application/json' -d '{"fallback_direct":false,"balance":f
 check "direct fallback can be switched off" bash -c "[ \"\$(curl -s --noproxy '*' -b '$COOKIES' '$PANEL/api/users/$USER_ID/config/udp' | grep -c '^remote ')\" = 1 ]"
 api -H 'Content-Type: application/json' -d '{"fallback_direct":true,"balance":false,"timeout":8}' "$PANEL/api/relays/options" >/dev/null
 api -X DELETE "$PANEL/api/relays/$RELAY_ID" >/dev/null; RELAY_ID=""
-check "without relays the config is direct-only again" bash -c "[ \"\$(curl -s --noproxy '*' -b '$COOKIES' '$PANEL/api/users/$USER_ID/config/udp' | grep -c '^remote ')\" = 1 ]"
+DIRECT_REMOTES=$((1 + $(api "$PANEL/api/settings/connection" | jget "['ports']['udp']['extra'].__len__()")))   # + extra ports
+check "without relays the config is direct-only again" bash -c "[ \"\$(curl -s --noproxy '*' -b '$COOKIES' '$PANEL/api/users/$USER_ID/config/udp' | grep -c '^remote ')\" = $DIRECT_REMOTES ]"
 }
 if [ "$(api "$PANEL/api/relays" | jget "['relays'].__len__()")" = "0" ]; then
   relay_tests
 else
   echo "  (skipped: this server already has relay servers configured)"
 fi
+
+echo; echo "== personal keys (tls-crypt-v2) =="
+conn() { api "$PANEL/api/settings/connection" | jget "$1"; }
+set_mode() { api -H 'Content-Type: application/json' -d "{\"mode\":\"$1\"}" "$PANEL/api/settings/connection/keys" | jget "['keys']['mode']"; }
+key_of() { sed -n '/<tls-crypt-v2>/,/<\/tls-crypt-v2>/p' "$1" | md5sum | cut -d' ' -f1; }
+MODE="$(conn "['keys']['mode']")"
+if [ "${RESTARTS:-0}" = "1" ] && [ "$(conn "['keys']['supported']")" = "True" ]; then
+  ORIG_MODE="$MODE"
+  check "key mode switches to shared (both instances restart)" [ "$(set_mode shared)" = "shared" ]
+  api "$PANEL/api/users/$USER_ID/config/udp" | local_cfg > "$WORK/legacy.ovpn"
+  check "...configs then carry the shared tls-crypt key" grep -q '<tls-crypt>' "$WORK/legacy.ovpn"
+  check "...and connect" run_cfg lg "$WORK/legacy.ovpn"
+  stop_client lg
+  check "compat mode: personal keys for new downloads" [ "$(set_mode compat)" = "compat" ]
+  check "...while the old shared-key config still connects" run_cfg lg2 "$WORK/legacy.ovpn"
+  stop_client lg2
+  MODE=compat
+fi
+if [ "$MODE" != "shared" ]; then
+  api "$PANEL/api/users/$USER_ID/config/udp" | local_cfg > "$WORK/k1.ovpn"
+  api "$PANEL/api/users/$USER_ID/config/tcp" | local_cfg > "$WORK/k1t.ovpn"
+  api "$PANEL/api/users/$CP_ID/config/udp" | local_cfg > "$WORK/kcp.ovpn"
+  check "config carries the user's own tls-crypt-v2 key" bash -c "grep -q '<tls-crypt-v2>' '$WORK/k1.ovpn' && ! grep -q '<tls-crypt>' '$WORK/k1.ovpn'"
+  check "...the same one in the UDP and the TCP file" [ "$(key_of "$WORK/k1.ovpn")" = "$(key_of "$WORK/k1t.ovpn")" ]
+  check "...and a different one than another user's" [ "$(key_of "$WORK/k1.ovpn")" != "$(key_of "$WORK/kcp.ovpn")" ]
+  check "client connects with its personal key (UDP)" run_cfg k1 "$WORK/k1.ovpn"
+  stop_client k1
+  check "...and over TCP" run_cfg k1t "$WORK/k1t.ovpn"
+  stop_client k1t
+  check "...and the panel sees the key in use" [ "$(field_of "$USER_ID" tls_key_seen_at)" != "None" ]
+  api -X POST "$PANEL/api/users/$USER_ID/regenerate_key" >/dev/null
+  check "after «new key» the leaked file no longer connects" refused k1old "$WORK/k1.ovpn"
+  check "...other users are untouched" run_cfg kcp "$WORK/kcp.ovpn" "$CPUSER" "$(field_of "$CP_ID" password)"
+  stop_client kcp
+  api "$PANEL/api/users/$USER_ID/config/udp" | local_cfg > "$WORK/k2.ovpn"
+  check "...and the user's new download connects" run_cfg k2 "$WORK/k2.ovpn"
+  stop_client k2
+  api "$PANEL/api/settings/shared-config/udp" | local_cfg > "$WORK/sh1.ovpn"
+  check "the shared password-only profile has a key of its own" \
+    bash -c "grep -q '<tls-crypt-v2>' '$WORK/sh1.ovpn' && [ \"\$(sed -n '/<tls-crypt-v2>/,/<\/tls-crypt-v2>/p' '$WORK/sh1.ovpn' | md5sum)\" != \"\$(sed -n '/<tls-crypt-v2>/,/<\/tls-crypt-v2>/p' '$WORK/k2.ovpn' | md5sum)\" ]"
+  P_PW="$(field_of "$P_ID" password)"
+  check "...which connects with a login" run_cfg sh1 "$WORK/sh1.ovpn" "$PUSER" "$P_PW"
+  stop_client sh1
+  api -X POST "$PANEL/api/settings/shared-key" >/dev/null
+  check "...and a new shared key retires old copies of that file" refused sh1old "$WORK/sh1.ovpn" "$PUSER" "$P_PW"
+  api "$PANEL/api/settings/shared-config/udp" | local_cfg > "$WORK/sh2.ovpn"
+  check "...while the new one works" run_cfg sh2 "$WORK/sh2.ovpn" "$PUSER" "$P_PW"
+  stop_client sh2
+  if [ "${RESTARTS:-0}" = "1" ]; then
+    check "strict mode: personal keys only" [ "$(set_mode per_user)" = "per_user" ]
+    check "...the old shared-key config is refused" refused lg3 "$WORK/legacy.ovpn"
+    check "...personal-key configs keep working" run_cfg k3 "$WORK/k2.ovpn"
+    stop_client k3
+  fi
+else
+  echo "  (skipped: personal keys are off; RESTARTS=1 switches them on for the test)"
+fi
+
+echo; echo "== extra ports =="
+UDP_PORT="$(env_get OVPN_UDP_PORT)"; TCP_PORT="$(env_get OVPN_TCP_PORT)"
+ORIG_PORTS="$(api "$PANEL/api/settings/connection" | python3 -c "import sys,json; p=json.load(sys.stdin)['ports']; print(json.dumps({'udp':p['udp']['extra'],'tcp':p['tcp']['extra']}))")"
+set_ports() { api -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "{\"udp\":[$1],\"tcp\":[$2]}" "$PANEL/api/settings/connection/ports"; }
+EU=21194; ET=20443
+check "a port the panel itself uses is refused" [ "$(set_ports "" "$(env_get PANEL_PORT)")" = 400 ]
+check "...and so is the main port" [ "$(set_ports "$UDP_PORT" "")" = 400 ]
+check "extra ports are saved" [ "$(set_ports "$EU" "$ET")" = 200 ]
+check "...and redirected to the real ports by iptables" bash -c \
+  "iptables -t nat -C WAZE_PORTS -p udp --dport $EU -j REDIRECT --to-ports $UDP_PORT && iptables -t nat -C WAZE_PORTS -p tcp --dport $ET -j REDIRECT --to-ports $TCP_PORT"
+api "$PANEL/api/users/$USER_ID/config/udp" | local_cfg > "$WORK/ep-udp.ovpn"
+api "$PANEL/api/users/$USER_ID/config/tcp" | local_cfg > "$WORK/ep-tcp.ovpn"
+check "configs try the main port first, then the extra one" bash -c \
+  "grep '^remote ' '$WORK/ep-udp.ovpn' | awk '{print \$3}' | tr '\n' ' ' | grep -q '^$UDP_PORT $EU ' && grep -q '^server-poll-timeout' '$WORK/ep-udp.ovpn'"
+ip netns exec "$NS" iptables -I OUTPUT -p udp --dport "$UDP_PORT" -j DROP
+started=$(date +%s)
+check "main UDP port blocked on the client's network: it moves on to the extra port" run_cfg epu "$WORK/ep-udp.ovpn"
+echo "        (took $(( $(date +%s) - started ))s)"
+ip netns exec "$NS" iptables -D OUTPUT -p udp --dport "$UDP_PORT" -j DROP
+stop_client epu
+ip netns exec "$NS" iptables -I OUTPUT -p tcp --dport "$TCP_PORT" -j DROP
+started=$(date +%s)
+check "...the same over TCP" run_cfg ept "$WORK/ep-tcp.ovpn"
+echo "        (took $(( $(date +%s) - started ))s)"
+ip netns exec "$NS" iptables -D OUTPUT -p tcp --dport "$TCP_PORT" -j DROP
+stop_client ept
+
+if [ "${RESTARTS:-0}" = "1" ]; then
+  echo; echo "== HTTPS cover =="
+  ORIG_COVER="$(conn "['cover']['enabled']" | tr 'TF' 'tf')"
+  cover() { api -H 'Content-Type: application/json' -d "{\"enabled\":$1}" "$PANEL/api/settings/connection/cover" | jget "['cover']['enabled']"; }
+  fetch() { ip netns exec "$NS" curl -sk --noproxy '*' --max-time 6 "$@" 2>/dev/null; }
+  page_has() { fetch "$1" | grep -q "$2"; }
+  not() { ! "$@"; }
+  check "cover switches on (TCP instance restarts)" [ "$(cover true)" = "True" ]
+  check "a browser opening the TCP port gets a web page" page_has "https://$HOST_IP:$TCP_PORT/" 'Welcome to nginx'
+  cert_cn() { echo | ip netns exec "$NS" timeout 6 openssl s_client -connect "$HOST_IP:$TCP_PORT" 2>/dev/null | sed -n 's/^subject=CN *= *//p'; }
+  COVER_HOST="$(conn "['cover']['url']" | sed 's#https://##; s#:.*##')"
+  check "...over TLS, with a certificate for this server ($COVER_HOST)" [ "$(cert_cn)" = "$COVER_HOST" ]
+  check "...plain HTTP gets the usual web-server error" page_has "http://$HOST_IP:$TCP_PORT/" 'plain HTTP request was sent to HTTPS port'
+  check "...unknown paths are a 404" [ "$(fetch -o /dev/null -w '%{http_code}' "https://$HOST_IP:$TCP_PORT/admin")" = 404 ]
+  check "...the extra TCP port shows the same site" page_has "https://$HOST_IP:$ET/" 'Welcome to nginx'
+  api "$PANEL/api/users/$USER_ID/config/tcp" | local_cfg > "$WORK/cv.ovpn"
+  check "VPN clients still connect on the same port" run_cfg cv "$WORK/cv.ovpn"
+  stop_client cv
+  check "cover switches off again" [ "$(cover false)" = "False" ]
+  check "...and the port stops answering browsers" not page_has "https://$HOST_IP:$TCP_PORT/" 'nginx'
+fi
+check "extra ports can be removed again" [ "$(set_ports "" "")" = 200 ]
+check "...which removes the firewall chain" bash -c "! iptables -t nat -S WAZE_PORTS >/dev/null 2>&1"
 
 echo; echo "== quota enforcement =="
 check "reconnects over UDP" start_client udp
@@ -351,7 +471,11 @@ ip netns exec "$NS" openvpn --config "$WORK/old.ovpn" --route-nopull --dev "tuno
   --daemon --writepid "$WORK/old.pid" --log "$WORK/client-old.log" --verb 3
 sleep 12
 check "deleted user's certificate can't connect" bash -c "! grep -q 'Initialization Sequence Completed' '$WORK/client-old.log'"
-check "server rejected it as a revoked certificate" bash -c "tail -n +$((log_lines + 1)) /var/log/openvpn/udp.log | grep -q 'certificate revoked'"
+if grep -q '<tls-crypt-v2>' "$WORK/old.ovpn"; then
+  check "server refused its personal key before the handshake" bash -c "tail -n +$((log_lines + 1)) /var/log/openvpn/udp.log | grep -qi 'tls-crypt-v2.*\(verify\|script\)\|TLS CRYPT V2 VERIFY'"
+else
+  check "server rejected it as a revoked certificate" bash -c "tail -n +$((log_lines + 1)) /var/log/openvpn/udp.log | grep -q 'certificate revoked'"
+fi
 next="$(openssl crl -in "$SERVER_DIR/crl.pem" -noout -nextupdate | cut -d= -f2)"
 check "CRL stays valid for more than a year ($next)" [ "$(date -d "$next" +%s)" -gt "$(( $(date +%s) + 365*86400 ))" ]
 

@@ -17,6 +17,7 @@ import time
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.connection import extra_ports, main_port
 from app.database import SessionLocal
 from app.models import RelayServer, Setting
 
@@ -68,19 +69,20 @@ def client_remotes(proto: str, key: str = "") -> tuple[list[tuple[str, int]], in
     try:
         relays = ordered_relays(db, enabled_only=True)
         opts = get_options(db)
+        extras = extra_ports(db, proto)
     finally:
         db.close()
 
-    direct_port = settings.OVPN_UDP_PORT if proto == "udp" else settings.OVPN_TCP_PORT
-    direct = (settings.SERVER_ADDRESS, int(direct_port))
+    # this server: its real port, then the extra ones (Settings > ports)
+    direct = [(settings.SERVER_ADDRESS, p) for p in [main_port(proto), *extras]]
     hops = [(r.address, r.udp_port if proto == "udp" else r.tcp_port) for r in relays]
     if not hops:
-        return [direct], opts["timeout"]
+        return direct, opts["timeout"]
     if opts["balance"] and key and len(hops) > 1:
         k = int(hashlib.sha256(key.encode()).hexdigest(), 16) % len(hops)
         hops = hops[k:] + hops[:k]
     if opts["fallback_direct"]:
-        hops.append(direct)
+        hops.extend(direct)
     return hops, opts["timeout"]
 
 

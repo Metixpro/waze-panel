@@ -823,6 +823,86 @@ a.svc-row:hover .t { color: var(--accent); }
 .dl-ic.tcp { background: rgba(60, 198, 192, 0.12); color: var(--teal); }
 .dl-row .btn { pointer-events: none; }
 
+/* extra ports: the order a config tries them in, main port first */
+.port-groups { display: grid; gap: 18px; }
+.port-group + .port-group { border-top: 1px solid var(--line); padding-top: 18px; }
+.pg-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.pg-proto { font-weight: 650; font-size: 13.5px; letter-spacing: 0.3px; }
+.pg-sub { font-size: 12.5px; color: var(--text-3); }
+.port-flow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 4px; }
+.port {
+  display: inline-flex; align-items: center; gap: 4px; height: 34px; padding-inline: 12px 5px; border-radius: 8px;
+  border: 1px solid var(--line-2); background: var(--surface-2); font-weight: 600; font-size: 13.5px; font-variant-numeric: tabular-nums;
+}
+.port.is-main { padding-inline: 12px; gap: 7px; border-color: transparent; background: var(--accent-soft); color: var(--accent); }
+.port small { font-size: 11px; font-weight: 500; opacity: 0.85; }
+.port .x { width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 6px; background: none; color: var(--text-3); cursor: pointer; }
+.port .x svg { width: 13px; height: 13px; }
+.port .x:hover { background: var(--red-soft); color: var(--red); }
+.pf-step { display: inline-flex; align-items: center; gap: 4px; }
+.pf-arrow { display: grid; color: var(--text-3); }
+.pf-arrow svg { width: 14px; height: 14px; }
+.port-add { display: inline-flex; align-items: center; height: 34px; padding-inline: 2px; border-radius: 8px; border: 1px dashed var(--line-2); }
+.port-add:focus-within { border-style: solid; border-color: var(--accent); }
+.port-add input { width: 72px; height: 30px; padding: 0 8px; border: 0; background: transparent; box-shadow: none; text-align: center; font-weight: 600; }
+.port-add input:focus { box-shadow: none; }
+.port-add .btn { width: 28px; height: 28px; }
+.pg-suggest { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 12px; font-size: 12.5px; color: var(--text-3); }
+.pg-suggest .chip { height: 26px; padding: 0 10px; font-variant-numeric: tabular-nums; }
+
+/* key mode: three cards, the current one ticked, the picked one outlined */
+.kmodes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.kmode {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 13px 14px 14px;
+  border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); color: var(--text);
+  font: inherit; text-align: right; cursor: pointer; transition: border-color 0.12s, box-shadow 0.12s;
+}
+.kmode:hover:not(:disabled) { border-color: var(--text-3); }
+.kmode.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.kmode:disabled { opacity: 0.45; cursor: not-allowed; }
+.kmode .kt { display: flex; align-items: center; gap: 7px; font-weight: 650; font-size: 13.5px; }
+.kmode .kt svg { width: 16px; height: 16px; color: var(--text-3); }
+.kmode.sel .kt svg { color: var(--accent); }
+.kmode .kt .badge { font-size: 11px; }
+.kmode .ks { font-size: 12.5px; line-height: 1.75; color: var(--text-3); }
+.kmode .cur { position: absolute; top: 12px; left: 12px; display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; color: var(--green); font-weight: 600; }
+.kmode .cur svg { width: 13px; height: 13px; }
+.kmode.current .kt { padding-left: 44px; }
+#keys-note:not(:empty) { margin-top: 16px; }
+.keys-progress .kp-top { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-size: 13px; color: var(--text-2); }
+.keys-progress .kp-top b { color: var(--text); font-weight: 650; }
+.keys-say, .cover-say { display: flex; gap: 8px; font-size: 13px; line-height: 1.85; color: var(--text-2); }
+.keys-say svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 4px; color: var(--accent); }
+
+/* HTTPS cover: what someone opening the port in a browser gets */
+.cover-view { display: grid; gap: 14px; padding: 0 18px 18px; transition: opacity 0.2s; }
+.cover-view.busy { opacity: 0.5; pointer-events: none; }
+.browser { overflow: hidden; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-2); }
+.b-bar { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-bottom: 1px solid var(--line); background: var(--surface-3); }
+.b-bar .dots { display: flex; gap: 5px; }
+.b-bar .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); }
+.b-url {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border-radius: 6px;
+  background: var(--surface); color: var(--text-2); font: 12px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; white-space: nowrap; overflow: hidden;
+}
+.b-url span { overflow: hidden; text-overflow: ellipsis; }
+.b-url svg { width: 12px; height: 12px; flex-shrink: 0; color: var(--text-3); }
+.browser.on .b-url svg { color: var(--green); }
+.b-page { display: grid; align-content: start; gap: 9px; min-height: 124px; padding: 18px 22px 22px; }
+.b-page b { font: 700 18px/1.3 Tahoma, Verdana, Arial, sans-serif; color: var(--text); }
+.b-page > span { height: 6px; width: 88%; border-radius: 3px; background: var(--line-2); }
+.b-page > span.short { width: 52%; }
+.browser.on .b-page { animation: page-in 0.35s ease-out; }
+@keyframes page-in { from { opacity: 0; transform: translateY(4px); } }
+.b-empty { display: grid; justify-items: center; gap: 4px; margin: auto; padding-top: 6px; text-align: center; color: var(--text-3); font: 13px/1.5 system-ui, sans-serif; }
+.b-empty svg { width: 22px; height: 22px; margin-bottom: 4px; }
+.b-empty small { font: 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; opacity: 0.8; }
+.cover-acts { gap: 10px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .kmodes { grid-template-columns: 1fr; }
+  .cover-view { padding: 0 16px 16px; }
+}
+
 /* login: a soft brand glow and a dot grid that fades out around the card */
 .auth { position: relative; overflow: hidden; }
 .auth::before {

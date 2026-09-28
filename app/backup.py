@@ -59,7 +59,7 @@ def create_backup() -> tuple[str, bytes]:
             tar.add(str(settings.EASYRSA_PKI_DIR), arcname=_arc(settings.EASYRSA_PKI_DIR))
 
         server_dir = settings.OPENVPN_SERVER_DIR
-        for pattern in ("ta.key", "dh.pem", "crl.pem", "waze-*.conf"):
+        for pattern in ("ta.key", "tls-crypt-v2.key", "dh.pem", "crl.pem", "waze-*.conf"):
             for p in sorted(server_dir.glob(pattern)):
                 tar.add(str(p), arcname=_arc(p))
 

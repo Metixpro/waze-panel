@@ -26,6 +26,9 @@ function fa(n, digits = 0) {
   return new Intl.NumberFormat("fa-IR", { maximumFractionDigits: digits }).format(n);
 }
 
+// ports, years...: Persian digits without the thousands separator fa() adds
+const faPort = (n) => String(n).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[d]);
+
 function bytesParts(n) {
   n = Number(n) || 0;
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];

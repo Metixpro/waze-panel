@@ -455,6 +455,12 @@ if [ ! -f "${OVPN_CONF_DIR}/ta.key" ]; then
   openvpn --genkey secret "${OVPN_CONF_DIR}/ta.key"
   log_ok "tls-crypt key created."
 fi
+# Master key for personal (per-user) tls-crypt-v2 keys; OpenVPN 2.5+.
+if [ ! -f "${OVPN_CONF_DIR}/tls-crypt-v2.key" ] && \
+   openvpn --genkey tls-crypt-v2-server "${OVPN_CONF_DIR}/tls-crypt-v2.key" >/dev/null 2>&1; then
+  chmod 600 "${OVPN_CONF_DIR}/tls-crypt-v2.key"
+  log_ok "tls-crypt-v2 master key created."
+fi
 
 if [ ! -f "${OVPN_CONF_DIR}/dh.pem" ]; then
   log_info "Generating Diffie-Hellman parameters (can take up to a minute)..."
@@ -599,6 +605,15 @@ log_ok "Wrote ${DATA_DIR}/panel.env and hook.env."
 log_step "Preparing the database"
 "${APP_DIR}/venv/bin/python" -m app.cli init-db > /dev/null
 chmod 600 "${DATA_DIR}/waze-panel.db"
+
+# The server configs load waze-{udp,tcp}.panel.conf (key mode, HTTPS cover),
+# which the panel writes from its database; extra ports are firewall rules.
+if ! "${APP_DIR}/venv/bin/python" -m app.cli apply-network >/dev/null; then
+  for p in udp tcp; do
+    [ -f "${OVPN_CONF_DIR}/waze-${p}.panel.conf" ] || echo "tls-crypt ${OVPN_CONF_DIR}/ta.key" > "${OVPN_CONF_DIR}/waze-${p}.panel.conf"
+  done
+  log_warn "Could not apply the panel's connection settings; OpenVPN uses the shared tls-crypt key."
+fi
 
 ADMIN_EXISTS=0
 if [ -n "$("${APP_DIR}/venv/bin/python" -m app.cli list-admins 2>/dev/null || true)" ]; then

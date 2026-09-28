@@ -10,8 +10,10 @@ ca /etc/openvpn/easy-rsa/pki/ca.crt
 cert /etc/openvpn/easy-rsa/pki/issued/server.crt
 key /etc/openvpn/easy-rsa/pki/private/server.key
 dh /etc/openvpn/server/dh.pem
-tls-crypt /etc/openvpn/server/ta.key
 crl-verify /etc/openvpn/server/crl.pem
+# tls-crypt / tls-crypt-v2 keys and the HTTPS cover (port-share) are set
+# from the panel's Settings page, which rewrites this file:
+config /etc/openvpn/server/waze-tcp.panel.conf
 
 server 10.9.0.0 255.255.255.0
 ifconfig-pool-persist /etc/openvpn/server/ipp-tcp.txt

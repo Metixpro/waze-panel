@@ -172,3 +172,25 @@ def run_disconnect(proto: str) -> None:
         )
         call_internal("/internal/hooks/disconnect", payload, retry_for=3.0)
     sys.exit(0)
+
+
+def run_tls_verify() -> None:
+    """--tls-crypt-v2-verify: runs before the TLS handshake of every client
+    holding a personal key; exit 0 lets the handshake go on. OpenVPN passes
+    what the panel sealed into the key in a temp file (metadata_type 0 =
+    our own data). Fails closed like the other hooks."""
+    metadata = ""
+    if env_var("metadata_type") == "0":
+        try:
+            with open(env_var("metadata_file"), "rb") as f:
+                metadata = f.read(512).decode("utf-8", "replace")
+        except OSError:
+            pass
+    if not metadata:
+        sys.exit(1)
+    result = call_internal(
+        "/internal/hooks/tlscrypt",
+        {"metadata": metadata, "ip": env_var("untrusted_ip")},
+        retry_for=4.0,
+    )
+    sys.exit(0 if result and result.get("allow") else 1)

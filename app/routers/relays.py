@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.connection import extra_ports
 from app.database import get_db
 from app.deps import get_optional_admin
 from app.models import AdminUser, RelayServer
@@ -90,6 +91,8 @@ def list_relays(admin: AdminUser | None = Depends(get_optional_admin), db: Sessi
             "address": settings.SERVER_ADDRESS,
             "udp_port": settings.OVPN_UDP_PORT,
             "tcp_port": settings.OVPN_TCP_PORT,
+            "udp_extra": extra_ports(db, "udp"),
+            "tcp_extra": extra_ports(db, "tcp"),
         },
     }
 

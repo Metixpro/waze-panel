@@ -8,13 +8,16 @@
 <div class="page-head">
   <div>
     <h1 class="page-title dup">تنظیمات</h1>
-    <div class="page-sub">آدرس سرور، سرور واسط، امنیت، پشتیبان‌گیری و ظاهر</div>
+    <div class="page-sub">آدرس سرور، مسیرهای اتصال، امنیت، پشتیبان‌گیری و ظاهر</div>
   </div>
 </div>
 
 <nav class="section-nav" id="section-nav" aria-label="بخش‌های تنظیمات">
   <a href="#s-address">آدرس و برند</a>
   <a href="#relay-card">سرور واسط ایران</a>
+  <a href="#ports-card">پورت‌های پشتیبان</a>
+  <a href="#cover-card">پوشش HTTPS</a>
+  <a href="#keys-card">کلید کاربران</a>
   <a href="#s-security">امنیت</a>
   <a href="#shared-card">کانفیگ مشترک</a>
   <a href="#backup-card">پشتیبان</a>
@@ -95,6 +98,73 @@
   </div>
 </section>
 
+<section class="sset" id="ports-card">
+  <div class="sset-info">
+    <h2>پورت‌های پشتیبان</h2>
+    <p>بعضی اپراتورها و شبکه‌ها پورت‌های خاصی را می‌بندند. هر پورت اضافه به همان سرویس می‌رسد و کانفیگ‌ها بعد از پورت اصلی به ترتیب امتحانش می‌کنند؛ اگر یکی بسته بود، خودشان چند ثانیه بعد سراغ بعدی می‌روند.</p>
+  </div>
+  <form class="card" id="ports-form" autocomplete="off">
+    <div class="card-body port-groups" id="port-groups">
+      <span class="skel" style="height:96px"></span>
+    </div>
+    <div class="card-foot">
+      <span>روی کانفیگ‌هایی که از این به بعد دانلود شوند اثر دارد و اتصال کسی را قطع نمی‌کند. اگر دیتاسنتر فایروال جدا دارد، این پورت‌ها را آنجا هم باز کنید.</span>
+      <button class="btn primary sm" type="submit" id="ports-save" disabled>ذخیره</button>
+    </div>
+  </form>
+</section>
+
+<section class="sset" id="cover-card">
+  <div class="sset-info">
+    <h2>پوشش HTTPS</h2>
+    <p>هر کسی که پورت TCP را با مرورگر یا اسکنر باز کند، یک سایت HTTPS معمولی می‌بیند و فقط اپ VPN از همان پورت وارد تونل می‌شود؛ پورت در برابر «پروب فعال» مثل یک وب‌سرور عادی رفتار می‌کند.</p>
+    <p>این کار ظاهر پورت را پنهان می‌کند، نه خود ترافیک: اتصال کاربران همچنان OpenVPN است و در برابر DPI پیشرفته تضمینی نیست.</p>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="setting-row">
+        <div>
+          <div class="t">پوشش HTTPS روی پورت <bdi class="mono">TCP {{ tcp_port }}</bdi></div>
+          <div class="s">با روشن یا خاموش کردن، سرویس TCP چند ثانیه راه‌اندازی مجدد می‌شود.</div>
+        </div>
+        <label class="switch" title="پوشش HTTPS"><input type="checkbox" id="cover-switch" aria-label="پوشش HTTPS" disabled /><span></span></label>
+      </div>
+    </div>
+    <div class="cover-view" id="cover-view" aria-live="polite"></div>
+  </div>
+</section>
+
+<section class="sset" id="keys-card">
+  <div class="sset-info">
+    <h2>کلید جدا برای هر کاربر</h2>
+    <p>با کلید جدا، هر کانفیگ کلید tls-crypt-v2 خودش را دارد. اگر فایل یک نفر لو برود، «کلید جدید» در صفحه‌ی همان کاربر فقط همان فایل را از کار می‌اندازد و بقیه دست نمی‌خورند.</p>
+    <p>بدون کلید معتبر، سرور حتی به دست‌دادن TLS هم جواب نمی‌دهد.</p>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="kmodes" id="kmodes" role="radiogroup" aria-label="حالت کلید">
+        <button type="button" class="kmode" data-mode="shared" role="radio">
+          <span class="kt">{{ icon("users") }} مشترک</span>
+          <span class="ks">یک کلید برای همه، مثل قبل. لو رفتن یک فایل یعنی کلید همه لو رفته.</span>
+        </button>
+        <button type="button" class="kmode" data-mode="compat" role="radio">
+          <span class="kt">{{ icon("route") }} انتقالی</span>
+          <span class="ks">دانلودهای جدید کلید شخصی می‌گیرند و فایل‌های قدیمی هم کار می‌کنند.</span>
+        </button>
+        <button type="button" class="kmode" data-mode="per_user" role="radio">
+          <span class="kt">{{ icon("shield-check") }} کلید جدا <span class="badge green">پیشنهادی</span></span>
+          <span class="ks">فقط کلید شخصی؛ فایل‌های قدیمی با کلید مشترک دیگر وصل نمی‌شوند.</span>
+        </button>
+      </div>
+      <div id="keys-note"></div>
+    </div>
+    <div class="card-foot">
+      <span>تغییر حالت، هر دو سرویس OpenVPN را چند ثانیه راه‌اندازی مجدد می‌کند.</span>
+      <button class="btn primary sm" type="button" id="keys-apply" disabled>اعمال</button>
+    </div>
+  </div>
+</section>
+
 <section class="sset" id="s-security">
   <div class="sset-info">
     <h2>امنیت حساب</h2>
@@ -137,6 +207,10 @@
         این فایل بدون نام کاربری و رمز معتبر به هیچ حسابی دسترسی نمی‌دهد.
       </div>
     </div>
+    <div class="card-foot{% if tls_mode == 'shared' %} hide{% endif %}" id="shared-key-row">
+      <span>این فایل کلید شخصی خودش را دارد. اگر جایی دست‌به‌دست شده که نباید، کلیدش را عوض کنید؛ نسخه‌های قبلی دیگر وصل نمی‌شوند.</span>
+      <button class="btn sm" type="button" id="shared-key">{{ icon("key") }} کلید جدید</button>
+    </div>
   </div>
 </section>
 
@@ -178,9 +252,9 @@
     <div class="card-body">
       <div class="kv-list">
         <div><span class="k">پورت پنل</span><span class="v num">{{ panel_port }}</span></div>
-        <div><span class="k">OpenVPN UDP</span><span class="v num">{{ udp_port }}</span></div>
-        <div><span class="k">OpenVPN TCP</span><span class="v num">{{ tcp_port }}</span></div>
-        <div><span class="k">رمزنگاری</span><span class="v ltr">AES-256-GCM · tls-crypt</span></div>
+        <div><span class="k">OpenVPN UDP</span><span class="v num">{{ ([udp_port] + udp_extra) | join("، ") }}</span></div>
+        <div><span class="k">OpenVPN TCP</span><span class="v num">{{ ([tcp_port] + tcp_extra) | join("، ") }}</span></div>
+        <div><span class="k">رمزنگاری</span><span class="v ltr">AES-256-GCM · {{ "tls-crypt" if tls_mode == "shared" else ("tls-crypt + tls-crypt-v2" if tls_mode == "compat" else "tls-crypt-v2") }}</span></div>
       </div>
     </div>
     <div class="card-body" style="border-top:1px solid var(--line)">

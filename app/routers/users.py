@@ -11,7 +11,7 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_optional_admin
 from app.models import AUTH_MODES, AdminUser, TrafficSample, VpnUser, generate_vpn_password
-from app.openvpn import certs, mgmt
+from app.openvpn import certs, mgmt, tlscrypt
 from app.openvpn.templates import build_ovpn
 from app.relays import relay_names_by_ip
 from app.templating import templates
@@ -117,6 +117,8 @@ def _serialize(
         "last_via": relay_names_by_ip().get(user.last_ip or ""),
         "token": user.token,
         "sub_link": f"{settings.public_base_url}/sub/{user.token}",
+        "tls_key": bool(user.tls_key),
+        "tls_key_seen_at": _iso(user.tls_key_seen_at),
     }
     if with_secret:
         # only on single-user responses, never in the list
@@ -189,6 +191,12 @@ def create_user(
             days=payload.expire_days
         )
 
+    if tlscrypt.get_mode(db) != "shared":
+        try:
+            tlscrypt.issue_user_key(user)
+        except tlscrypt.TlsKeyError:
+            pass  # made on the first download instead
+
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -208,6 +216,7 @@ def get_user(
         raise HTTPException(status_code=404, detail="not found")
 
     data = _serialize(user, with_secret=True)
+    data["tls_mode"] = tlscrypt.get_mode(db)
 
     since = datetime.date.today() - datetime.timedelta(days=13)
     rows = (
@@ -346,6 +355,29 @@ def regenerate_token(
     return _serialize(user)
 
 
+@router.post("/api/users/{user_id}/regenerate_key")
+def regenerate_key(
+    user_id: int,
+    admin: AdminUser | None = Depends(get_optional_admin),
+    db: Session = Depends(get_db),
+):
+    """New personal tls-crypt-v2 key: every config file the user had stops
+    working right away (open sessions are cut), nobody else is touched."""
+    _require_admin(admin)
+    user = db.get(VpnUser, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        tlscrypt.issue_user_key(user)
+    except tlscrypt.TlsKeyError as exc:
+        raise HTTPException(status_code=500, detail=f"ساخت کلید ناموفق بود: {exc}") from exc
+    db.commit()
+    db.refresh(user)
+    if tlscrypt.get_mode(db) != "shared":
+        _kill_everywhere(user.username)
+    return _serialize(user, with_secret=True)
+
+
 @router.delete("/api/users/{user_id}")
 def delete_user(
     user_id: int,
@@ -386,7 +418,7 @@ def download_config(
         raise HTTPException(status_code=404, detail="not found")
 
     try:
-        content = build_ovpn(user.username, proto, user.auth_mode)
+        content = build_ovpn(db, user, proto)
     except certs.CertError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

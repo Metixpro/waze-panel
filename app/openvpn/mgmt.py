@@ -124,6 +124,21 @@ def kill_everywhere(ports, identity: str) -> None:
             pass
 
 
+def is_ready(port: int) -> bool:
+    """The instance finished starting up (keys loaded, port bound)."""
+    try:
+        return any(",CONNECTED," in line for line in _talk(port, "state"))
+    except ManagementError:
+        return False
+
+
+def send_signal(port: int, signal: str) -> bool:
+    try:
+        return any(l.startswith("SUCCESS") for l in _talk(port, f"signal {signal}"))
+    except ManagementError:
+        return False
+
+
 def is_reachable(port: int) -> bool:
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=2):

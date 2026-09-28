@@ -207,6 +207,7 @@ function drawerHtml(u) {
   </div>
 
   ${loginSection(u)}
+  ${keySection(u)}
 
   <div class="dsec">
     <div class="dsec-title">لینک اشتراک</div>
@@ -263,7 +264,7 @@ function drawerHtml(u) {
 const MODE_HINTS = {
   cert: "با فایل کانفیگ اختصاصی خودش وصل می‌شود؛ رمزی لازم نیست.",
   cert_pass: "فایل اختصاصی و نام کاربری و رمز، هر دو لازم است. اگر فایل لو برود هم بدون رمز کار نمی‌کند.",
-  pass: "بدون گواهی اختصاصی: همه‌ی کاربران «فقط رمز» یک فایل مشترک دارند و با نام کاربری و رمز خودشان وارد می‌شوند.",
+  pass: "بدون گواهی اختصاصی: با نام کاربری و رمز خودش وارد می‌شود؛ فایل مشترک «فقط رمز» در تنظیمات هم برایش کار می‌کند.",
 };
 
 function loginSection(u) {
@@ -291,6 +292,23 @@ function loginSection(u) {
       <div class="modes" role="radiogroup">${modes}</div>
       <div class="hint">${MODE_HINTS[mode]}</div>
       ${pw}
+    </div>`;
+}
+
+// Personal tls-crypt-v2 key: only once the server hands them out.
+function keySection(u) {
+  if (!u.tls_mode || u.tls_mode === "shared") return "";
+  const state = u.tls_key_seen_at
+    ? `آخرین اتصال با این کلید ${relTime(u.tls_key_seen_at)}`
+    : u.tls_key ? "هنوز با این کلید وصل نشده" : "با اولین دانلود کانفیگ ساخته می‌شود";
+  return `
+    <div class="dsec">
+      <div class="dsec-title">کلید اتصال</div>
+      <div class="setting-row">
+        <div><div class="t">کلید شخصی <span class="mono muted" style="font-weight:400">tls-crypt-v2</span></div><div class="s">${state}</div></div>
+        <button class="btn sm" type="button" data-act="new-key">${ic("key")} کلید جدید</button>
+      </div>
+      <div class="hint">اگر فایل کانفیگ این کاربر دست کس دیگری افتاده، کلید جدید بسازید: همه‌ی نسخه‌های قبلی همان لحظه از کار می‌افتند و بقیه‌ی کاربران دست نمی‌خورند.</div>
     </div>`;
 }
 
@@ -398,6 +416,16 @@ $("#drawer").addEventListener("click", async (ev) => {
       if (!(await confirmDialog({ title: "لینک اشتراک عوض شود؟", message: "لینک فعلی دیگر باز نمی‌شود و باید لینک جدید را برای کاربر بفرستید. کانفیگ‌های دانلودشده همچنان کار می‌کنند.", ok: "ساخت لینک جدید", danger: false }))) return;
       await api(`/api/users/${u.id}/regenerate_token`, { method: "POST" });
       toast("لینک جدید ساخته شد");
+      return Promise.all([refreshDrawer(), load()]);
+    }
+    if (act === "new-key") {
+      if (!(await confirmDialog({
+        title: `کلید جدید برای ${u.username}؟`,
+        message: "همه‌ی فایل‌های کانفیگی که این کاربر تا الان داشته، همان لحظه از کار می‌افتند و اتصال فعلی‌اش قطع می‌شود. باید کانفیگ را دوباره از لینک اشتراک دانلود کند؛ لینک اشتراک عوض نمی‌شود.",
+        ok: "ساخت کلید جدید",
+      }))) return;
+      await withBusy(el, () => api(`/api/users/${u.id}/regenerate_key`, { method: "POST" }));
+      toast("کلید جدید ساخته شد؛ کاربر کانفیگ را دوباره دانلود کند");
       return Promise.all([refreshDrawer(), load()]);
     }
     if (act === "delete") {

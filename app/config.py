@@ -57,6 +57,10 @@ class Settings:
     OVPN_UDP_SUBNET: str = os.getenv("OVPN_UDP_SUBNET", "10.8.0.0")
     OVPN_TCP_SUBNET: str = os.getenv("OVPN_TCP_SUBNET", "10.9.0.0")
     OVPN_SUBNET_MASK: str = os.getenv("OVPN_SUBNET_MASK", "255.255.255.0")
+    # systemd template the two instances run under (openvpn-server@ or openvpn@)
+    OVPN_SERVICE_PREFIX: str = os.getenv("OVPN_SERVICE_PREFIX", "openvpn-server@")
+    # loopback-only port of the built-in HTTPS cover site (app/cover.py)
+    COVER_PORT: int = int(os.getenv("COVER_PORT", "7543"))
 
     # --- Web panel ---
     PANEL_PORT: int = int(os.getenv("PANEL_PORT", "8000"))

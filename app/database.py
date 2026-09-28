@@ -39,6 +39,9 @@ _ADDED_COLUMNS = {
         "auth_mode": "VARCHAR(16) NOT NULL DEFAULT 'cert'",
         "auth_password": "VARCHAR(128)",
         "max_devices": "INTEGER NOT NULL DEFAULT 0",
+        "tls_key": "TEXT",
+        "tls_key_id": "VARCHAR(16)",
+        "tls_key_seen_at": "DATETIME",
     },
     "relay_servers": {
         "source_ip": "VARCHAR(64)",

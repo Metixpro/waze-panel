@@ -45,8 +45,8 @@ log_step "Removing systemd files"
 rm -f /etc/systemd/system/waze-panel.service /etc/systemd/system/waze-panel-nat.service
 rm -rf /etc/systemd/system/openvpn-server@waze-{udp,tcp}.service.d /etc/systemd/system/openvpn@waze-{udp,tcp}.service.d
 rm -f /usr/local/bin/waze-panel /etc/logrotate.d/waze-panel
-rm -f "${OVPN_DIR}/server/waze-udp.conf" "${OVPN_DIR}/server/waze-tcp.conf"
-rm -f "${OVPN_DIR}/waze-udp.conf" "${OVPN_DIR}/waze-tcp.conf"
+rm -f "${OVPN_DIR}"/server/waze-{udp,tcp}.conf "${OVPN_DIR}"/server/waze-{udp,tcp}.panel.conf
+rm -f "${OVPN_DIR}"/waze-{udp,tcp}.conf "${OVPN_DIR}"/waze-{udp,tcp}.panel.conf
 systemctl daemon-reload
 log_ok "Done."
 
@@ -61,6 +61,11 @@ if [ -f "${DATA_DIR}/setup-nat.sh" ]; then
 else
   log_warn "setup-nat.sh not found, skipping this step."
 fi
+# extra ports (Settings page) live in their own chain
+JUMP=(PREROUTING -m addrtype --dst-type LOCAL ! -i "tun-waze+" -j WAZE_PORTS)
+while iptables -t nat -D "${JUMP[@]}" 2>/dev/null; do :; done
+iptables -t nat -F WAZE_PORTS 2>/dev/null || true
+iptables -t nat -X WAZE_PORTS 2>/dev/null || true
 
 if [ "$(confirm "Remove the panel, database, and all settings (${APP_DIR} and ${DATA_DIR})?")" = "y" ]; then
   rm -rf "$APP_DIR" "$DATA_DIR"
@@ -71,7 +76,7 @@ fi
 
 if [ "$(confirm "Also remove the certificate infrastructure (CA/PKI)? This permanently invalidates every issued user config.")" = "y" ]; then
   rm -rf "$EASYRSA_DIR"
-  rm -f "${OVPN_DIR}/server/ta.key" "${OVPN_DIR}/server/dh.pem" "${OVPN_DIR}/server/crl.pem"
+  rm -f "${OVPN_DIR}/server/ta.key" "${OVPN_DIR}/server/tls-crypt-v2.key" "${OVPN_DIR}/server/dh.pem" "${OVPN_DIR}/server/crl.pem"
   rm -f "${OVPN_DIR}/server/status-udp.log" "${OVPN_DIR}/server/status-tcp.log"
   rm -f "${OVPN_DIR}/server/ipp-udp.txt" "${OVPN_DIR}/server/ipp-tcp.txt"
   log_ok "PKI and OpenVPN server files removed."

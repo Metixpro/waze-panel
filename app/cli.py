@@ -6,6 +6,7 @@ maintenance:
     python -m app.cli reset-password --username admin --password 'newsecret'
     python -m app.cli list-admins
     python -m app.cli backup --out /root
+    python -m app.cli apply-network
     python -m app.cli version
 """
 import argparse
@@ -95,6 +96,25 @@ def cmd_list_admins(_args) -> None:
         db.close()
 
 
+def cmd_apply_network(_args) -> None:
+    """Used by install.sh: write the panel-managed OpenVPN include files and
+    the extra-port firewall rules from the database (no restart)."""
+    from app import connection
+    from app.openvpn import tlscrypt
+
+    init_db()
+    db = SessionLocal()
+    try:
+        mode = tlscrypt.init_mode(db)
+        connection.write_openvpn(db)
+        err = connection.apply_port_rules(db)
+        if err:
+            print(f"extra ports not applied: {err}", file=sys.stderr)
+        print(f"tls-crypt mode: {mode}")
+    finally:
+        db.close()
+
+
 def cmd_version(_args) -> None:
     from app.version import __version__, build_info
 
@@ -132,6 +152,8 @@ def main() -> None:
     p = sub.add_parser("backup")
     p.add_argument("--out", help="output file or directory (default: current directory)")
     p.set_defaults(func=cmd_backup)
+
+    sub.add_parser("apply-network").set_defaults(func=cmd_apply_network)
 
     sub.add_parser("version").set_defaults(func=cmd_version)
 
