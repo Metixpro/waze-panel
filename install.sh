@@ -39,6 +39,17 @@ log_warn()  { echo -e "    ${C_YELLOW}!${C_RESET} $*"; }
 log_err()   { echo -e "    ${C_RED}FAIL${C_RESET} $*" >&2; }
 die()       { log_err "$*"; exit 1; }
 
+# Random alphanumeric string of length $1. `tr </dev/urandom | head -c N`
+# is the standard way to do this, but /dev/urandom keeps producing data
+# after head has read enough and closes the pipe, so tr gets SIGPIPE; with
+# `set -o pipefail` that makes the whole pipeline "fail" and, combined with
+# `set -e`, silently kills the script right where this is called. The
+# `|| true` swallows that specific non-fatal failure while still keeping
+# the (already-correct) captured output.
+rand_str() {
+  tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c "$1" || true
+}
+
 # ============================================================
 # Defaults (overridable via flags or env)
 # ============================================================
@@ -162,7 +173,7 @@ fi
 ADMIN_USER=$(ask "Panel admin username" "$ADMIN_USER")
 
 if [ -z "$ADMIN_PASS" ]; then
-  ADMIN_PASS="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
+  ADMIN_PASS="$(rand_str 16)"
   log_info "Admin password auto-generated (shown at the end)."
 fi
 
@@ -201,7 +212,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq \
   openvpn easy-rsa python3 python3-venv python3-pip \
-  curl git rsync openssl iptables sqlite3 ca-certificates >/dev/null
+  curl git rsync openssl iptables iproute2 sqlite3 ca-certificates >/dev/null
 log_ok "Core packages installed."
 
 if [ "$SETUP_NGINX" -eq 1 ]; then
@@ -240,12 +251,12 @@ log_ok "ip_forward enabled."
 log_step "Building the certificate infrastructure (CA/PKI) with easy-rsa"
 
 if [ ! -d "$EASYRSA_DIR" ]; then
-  EASYRSA_SHARE="$(find /usr/share -maxdepth 1 -iname 'easy-rsa' 2>/dev/null | head -n1)"
+  EASYRSA_SHARE="$(find /usr/share -maxdepth 1 -iname 'easy-rsa' 2>/dev/null | head -n1 || true)"
   [ -n "$EASYRSA_SHARE" ] || die "The easy-rsa package was not found."
   cp -r "$EASYRSA_SHARE" "$EASYRSA_DIR"
   # some distros ship easyrsa under a versioned subdir; flatten if so
   if [ ! -f "${EASYRSA_DIR}/easyrsa" ]; then
-    inner="$(find "$EASYRSA_DIR" -maxdepth 1 -type d -iname '*easy-rsa*' | head -n1)"
+    inner="$(find "$EASYRSA_DIR" -maxdepth 1 -type d -iname '*easy-rsa*' | head -n1 || true)"
     [ -n "$inner" ] && cp -r "$inner"/* "$EASYRSA_DIR"/
   fi
 fi
@@ -310,6 +321,11 @@ else
   log_ok "Code fetched from GitHub."
 fi
 
+# From here on the script needs to run with $APP_DIR as the working
+# directory: `python -m app.cli` resolves the `app` package via the
+# current directory, and the earlier PKI step left us in $EASYRSA_DIR.
+cd "$APP_DIR"
+
 chmod +x "${APP_DIR}"/scripts/*.py "${APP_DIR}"/*.sh 2>/dev/null || true
 
 log_info "Creating the Python virtualenv and installing dependencies..."
@@ -353,7 +369,7 @@ log_ok "OpenVPN config files created."
 # ============================================================
 log_step "Configuring NAT for the VPN tunnels"
 
-WAN_IF="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')"
+WAN_IF="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}' || true)"
 [ -n "$WAN_IF" ] || log_warn "Outbound interface not found; NAT can be configured manually."
 
 NAT_TMP="$(mktemp)"
@@ -404,8 +420,8 @@ fi
 # ============================================================
 log_step "Writing the panel configuration file"
 
-SECRET_KEY="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)"
-INTERNAL_TOKEN="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)"
+SECRET_KEY="$(rand_str 48)"
+INTERNAL_TOKEN="$(rand_str 48)"
 
 SUBSCRIPTION_BASE_URL=""
 if [ "$SETUP_NGINX" -eq 1 ] && [ -n "$DOMAIN" ]; then
@@ -461,12 +477,17 @@ log_step "Starting services"
 sed -e "s#__APP_DIR__#${APP_DIR}#g" -e "s#__PANEL_PORT__#${PANEL_PORT}#g" \
   "${APP_DIR}/scripts/waze-panel.service.tmpl" > /etc/systemd/system/waze-panel.service
 
-systemctl daemon-reload
+# Each step below is allowed to fail without killing the script: a single
+# service refusing to start (bad config, a port already in use, ...) must
+# not stop us from reaching the summary at the end, since that is the only
+# place the freshly-generated admin password is ever shown. The per-service
+# status loop right after this reports exactly what did or didn't come up.
+systemctl daemon-reload || true
 
-systemctl enable --now waze-panel-nat.service >/dev/null 2>&1
-systemctl enable --now "${OVPN_SERVICE_PREFIX}${UDP_CONF_NAME}" >/dev/null 2>&1
-systemctl enable --now "${OVPN_SERVICE_PREFIX}${TCP_CONF_NAME}" >/dev/null 2>&1
-systemctl enable --now waze-panel.service >/dev/null 2>&1
+systemctl enable --now waze-panel-nat.service >/dev/null 2>&1 || true
+systemctl enable --now "${OVPN_SERVICE_PREFIX}${UDP_CONF_NAME}" >/dev/null 2>&1 || true
+systemctl enable --now "${OVPN_SERVICE_PREFIX}${TCP_CONF_NAME}" >/dev/null 2>&1 || true
+systemctl enable --now waze-panel.service >/dev/null 2>&1 || true
 
 sleep 2
 
@@ -487,16 +508,20 @@ if [ "$SETUP_NGINX" -eq 1 ] && [ -n "$DOMAIN" ]; then
     "${APP_DIR}/scripts/nginx-waze-panel.conf.tmpl" > "/etc/nginx/sites-available/waze-panel.conf"
   ln -sf /etc/nginx/sites-available/waze-panel.conf /etc/nginx/sites-enabled/waze-panel.conf
   rm -f /etc/nginx/sites-enabled/default
-  nginx -t && systemctl reload nginx
-  log_ok "Nginx configured for ${DOMAIN}."
+  if nginx -t 2>/tmp/nginx-test.log && systemctl reload nginx; then
+    log_ok "Nginx configured for ${DOMAIN}."
 
-  if certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "admin@${DOMAIN}" --redirect 2>/tmp/certbot.log; then
-    log_ok "SSL certificate issued via Let's Encrypt."
-    SUBSCRIPTION_BASE_URL="https://${DOMAIN}"
-    sed -i "s#^SUBSCRIPTION_BASE_URL=.*#SUBSCRIPTION_BASE_URL=\"${SUBSCRIPTION_BASE_URL}\"#" "${DATA_DIR}/panel.env"
-    systemctl restart waze-panel.service
+    if certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "admin@${DOMAIN}" --redirect 2>/tmp/certbot.log; then
+      log_ok "SSL certificate issued via Let's Encrypt."
+      SUBSCRIPTION_BASE_URL="https://${DOMAIN}"
+      sed -i "s#^SUBSCRIPTION_BASE_URL=.*#SUBSCRIPTION_BASE_URL=\"${SUBSCRIPTION_BASE_URL}\"#" "${DATA_DIR}/panel.env"
+      systemctl restart waze-panel.service || true
+    else
+      log_warn "SSL certificate issuance failed (log: /tmp/certbot.log). Check the domain and run 'certbot --nginx -d ${DOMAIN}' manually later."
+    fi
   else
-    log_warn "SSL certificate issuance failed (log: /tmp/certbot.log). Check the domain and run 'certbot --nginx -d ${DOMAIN}' manually later."
+    log_warn "Nginx config test failed (log: /tmp/nginx-test.log). The panel is still reachable on its plain HTTP port; fix and reload Nginx manually."
+    SETUP_NGINX=0
   fi
 fi
 
