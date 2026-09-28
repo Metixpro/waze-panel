@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% set active = "users" %}
+{% block page_title %}کاربران{% endblock %}
+{% block page_sub %}ساخت، مدیریت و کنترل مصرف کاربران VPN{% endblock %}
+
+{% block content %}
+{% from "_icons.html" import search_icon, plus_icon, copy_icon, download_icon, power_icon, trash_icon, refresh_icon %}
+
+<div class="toolbar">
+  <div class="search-box">
+    {{ search_icon() }}
+    <input type="search" id="search-input" placeholder="جستجوی نام کاربری..." />
+  </div>
+  <div class="flex gap-8">
+    <button class="btn ghost sm" id="refresh-btn">{{ refresh_icon() }} بروزرسانی</button>
+    <button class="btn primary" id="new-user-btn">{{ plus_icon() }} کاربر جدید</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table class="data" id="users-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>کاربر</th>
+          <th>وضعیت</th>
+          <th>مصرف</th>
+          <th>انقضا</th>
+          <th>آخرین اتصال</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody">
+        <tr><td colspan="7" class="text-faint" style="text-align:center; padding:30px;">در حال بارگذاری...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create user modal -->
+<div class="modal-backdrop" id="modal-create">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>ساخت کاربر جدید</h3>
+      <button class="btn icon-only ghost sm" onclick="closeModal('modal-create')">✕</button>
+    </div>
+    <div class="modal-sub">یک گواهی OpenVPN جدید ساخته می‌شود و لینک اشتراک به‌صورت خودکار تولید می‌گردد.</div>
+
+    <form id="create-form">
+      <div class="field">
+        <label>نام کاربری (فقط انگلیسی)</label>
+        <input type="text" name="username" class="mono" placeholder="john_doe" required pattern="[a-zA-Z][a-zA-Z0-9_-]{2,31}" />
+        <div class="hint">با حرف شروع شود، ۳ تا ۳۲ کاراکتر، فقط حروف/عدد انگلیسی و - _</div>
+      </div>
+      <div class="field">
+        <label>یادداشت (اختیاری)</label>
+        <input type="text" name="note" placeholder="مثلا: مشتری تلگرام" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>حجم مجاز (گیگابایت)</label>
+          <input type="number" name="data_limit_gb" min="0" step="0.5" placeholder="نامحدود" />
+        </div>
+        <div class="field">
+          <label>مدت اعتبار (روز)</label>
+          <input type="number" name="expire_days" min="0" step="1" placeholder="نامحدود" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn primary">{{ plus_icon() }} ساخت کاربر</button>
+        <button type="button" class="btn ghost" onclick="closeModal('modal-create')">انصراف</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Detail / edit modal -->
+<div class="modal-backdrop" id="modal-detail">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <h3 class="mono" id="detail-username">—</h3>
+      <button class="btn icon-only ghost sm" onclick="closeModal('modal-detail')">✕</button>
+    </div>
+    <div class="modal-sub" id="detail-created">—</div>
+
+    <div class="info-row">
+      <span class="k">لینک اشتراک (Subscription)</span>
+    </div>
+    <div class="flex gap-8 mt-8">
+      <input type="text" id="detail-sublink" class="mono" readonly style="flex:1;" />
+      <button class="btn icon-only sm" onclick="copyText(document.getElementById('detail-sublink').value)">{{ copy_icon() }}</button>
+    </div>
+
+    <div class="flex gap-8 mt-16">
+      <a class="btn sm w-full" id="detail-dl-udp" href="#" target="_blank">{{ download_icon() }} کانفیگ UDP</a>
+      <a class="btn sm w-full" id="detail-dl-tcp" href="#" target="_blank">{{ download_icon() }} کانفیگ TCP</a>
+    </div>
+
+    <div class="progress-row mt-16">
+      <span>مصرف</span>
+      <span id="detail-usage-text">—</span>
+    </div>
+    <div class="bar" id="detail-usage-bar-wrap"><span id="detail-usage-bar" style="width:0%"></span></div>
+
+    <form id="edit-form" class="mt-16">
+      <div class="field">
+        <label>یادداشت</label>
+        <input type="text" name="note" id="edit-note" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>حجم مجاز جدید (GB) — خالی = بدون تغییر، ۰ = نامحدود</label>
+          <input type="number" name="data_limit_gb" id="edit-limit" min="0" step="0.5" />
+        </div>
+        <div class="field">
+          <label>تمدید اعتبار (روز از الان) — ۰ = نامحدود</label>
+          <input type="number" name="expire_days" id="edit-expire" min="0" step="1" />
+        </div>
+      </div>
+      <button type="submit" class="btn primary sm">ذخیره تغییرات</button>
+      <button type="button" class="btn ghost sm" id="detail-reset-usage">صفر کردن مصرف</button>
+    </form>
+
+    <div class="modal-actions mt-16" style="border-top:1px solid var(--border); padding-top:16px;">
+      <button class="btn sm" id="detail-toggle">{{ power_icon() }} فعال/غیرفعال</button>
+      <button class="btn sm" id="detail-regen">{{ refresh_icon() }} لینک جدید</button>
+      <button class="btn danger sm" id="detail-delete">{{ trash_icon() }} حذف کاربر</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/users.js"></script>
+{% endblock %}

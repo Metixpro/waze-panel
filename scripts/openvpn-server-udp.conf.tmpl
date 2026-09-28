@@ -1,0 +1,43 @@
+# Waze Panel — OpenVPN UDP instance
+# Rendered by install.sh. Placeholders: __UDP_PORT__ __APP_DIR__ __UDP_MGMT_PORT__
+
+port __UDP_PORT__
+proto udp4
+dev tun-waze-udp
+topology subnet
+
+ca /etc/openvpn/easy-rsa/pki/ca.crt
+cert /etc/openvpn/easy-rsa/pki/issued/server.crt
+key /etc/openvpn/easy-rsa/pki/private/server.key
+dh /etc/openvpn/server/dh.pem
+tls-crypt /etc/openvpn/server/ta.key
+crl-verify /etc/openvpn/server/crl.pem
+
+server 10.8.0.0 255.255.255.0
+ifconfig-pool-persist /etc/openvpn/server/ipp-udp.txt
+
+push "redirect-gateway def1 bypass-dhcp"
+push "dhcp-option DNS 1.1.1.1"
+push "dhcp-option DNS 8.8.8.8"
+
+keepalive 10 120
+cipher AES-256-GCM
+auth SHA256
+data-ciphers AES-256-GCM:AES-128-GCM
+
+user nobody
+group nogroup
+persist-key
+persist-tun
+
+status /etc/openvpn/server/status-udp.log
+status-version 3
+log-append /var/log/openvpn/udp.log
+verb 3
+explicit-exit-notify 1
+
+management 127.0.0.1 __UDP_MGMT_PORT__
+
+script-security 2
+client-connect __APP_DIR__/scripts/client-connect-udp.py
+client-disconnect __APP_DIR__/scripts/client-disconnect-udp.py

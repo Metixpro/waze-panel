@@ -1,0 +1,117 @@
+import datetime
+import secrets
+import uuid
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
+    last_login_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+
+
+class VpnUser(Base):
+    """A single OpenVPN client identity (one certificate, usable over both
+    the UDP and the TCP instance)."""
+
+    __tablename__ = "vpn_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # Public, unguessable token used in the subscription link. Never the
+    # username itself, so links can be shared without exposing the cert CN.
+    token: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, default=lambda: uuid.uuid4().hex
+    )
+
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    data_limit_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    data_used_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+
+    expire_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+
+    # last time we saw this CN connected on either instance (for "online now")
+    last_connected_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    last_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    def is_over_quota(self) -> bool:
+        return (
+            self.data_limit_bytes is not None
+            and self.data_used_bytes >= self.data_limit_bytes
+        )
+
+    def is_expired(self) -> bool:
+        if self.expire_at is None:
+            return False
+        return _utcnow() > self.expire_at.replace(tzinfo=datetime.timezone.utc)
+
+    def is_usable(self) -> bool:
+        return (
+            self.enabled
+            and not self.revoked
+            and not self.is_expired()
+            and not self.is_over_quota()
+        )
+
+    def regenerate_token(self) -> None:
+        self.token = uuid.uuid4().hex
+
+
+class TrafficSample(Base):
+    """Daily traffic aggregate per user, used to draw the dashboard chart
+    and per-user history. One row per (vpn_user, date)."""
+
+    __tablename__ = "traffic_samples"
+    __table_args__ = (UniqueConstraint("vpn_user_id", "date", name="uq_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vpn_user_id: Mapped[int] = mapped_column(ForeignKey("vpn_users.id"), index=True)
+    date: Mapped[datetime.date] = mapped_column(Date, index=True)
+    bytes_total: Mapped[int] = mapped_column(BigInteger, default=0)
+
+    vpn_user: Mapped["VpnUser"] = relationship()
+
+
+class Setting(Base):
+    """Simple key/value store for panel-editable settings (server address,
+    panel title, ...)."""
+
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(512))

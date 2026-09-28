@@ -1,0 +1,12 @@
+[Unit]
+Description=Waze Panel - NAT/forwarding rules for OpenVPN subnets
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/etc/waze-panel/setup-nat.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

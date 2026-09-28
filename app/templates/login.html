@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ورود | {{ panel_title }}</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  {% from "_icons.html" import logo %}
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="logo">{{ logo() }}</div>
+      <h1>{{ panel_title }}</h1>
+      <p class="sub">برای ورود به پنل مدیریت، اطلاعات حساب خود را وارد کنید</p>
+
+      {% if error %}
+      <div class="error-box">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" action="/login">
+        <div class="field">
+          <label>نام کاربری</label>
+          <input type="text" name="username" autocomplete="username" required autofocus />
+        </div>
+        <div class="field">
+          <label>رمز عبور</label>
+          <input type="password" name="password" autocomplete="current-password" required />
+        </div>
+        <button type="submit" class="btn primary w-full">ورود به پنل</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

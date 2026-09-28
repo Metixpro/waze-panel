@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>کانفیگ من | {{ panel_title }}</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+{% from "_icons.html" import logo, wifi_icon, key_icon %}
+<div class="sub-wrap">
+  <div class="sub-card">
+    <div class="top">
+      <div class="logo">{{ logo() }}</div>
+      <div>
+        <div class="username mono">{{ user.username }}</div>
+        <div class="meta">{{ panel_title }} — کانفیگ اختصاصی شما</div>
+      </div>
+    </div>
+
+    {% if status_label != "active" %}
+    <div class="error-box">
+      {% if status_label == "disabled" %}این اکانت توسط مدیر غیرفعال شده است.
+      {% elif status_label == "expired" %}مهلت استفاده از این اکانت به پایان رسیده است.
+      {% elif status_label == "over_quota" %}حجم مصرفی این اکانت تمام شده است.
+      {% elif status_label == "revoked" %}این اکانت باطل شده است.
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="progress-row">
+      <span>میزان مصرف</span>
+      <span>
+        {{ user.data_used_bytes | humanize_bytes }}
+        {% if user.data_limit_bytes %} / {{ user.data_limit_bytes | humanize_bytes }}{% else %} / نامحدود{% endif %}
+      </span>
+    </div>
+    <div class="bar {% if usage_percent and usage_percent >= 100 %}danger{% elif usage_percent and usage_percent >= 80 %}warn{% endif %}">
+      <span style="width: {{ usage_percent if usage_percent is not none else 6 }}%"></span>
+    </div>
+
+    <div class="sub-download-grid">
+      <a class="proto-btn" href="/sub/{{ user.token }}/udp">
+        {{ wifi_icon() }}
+        <span class="proto-name">UDP</span>
+        <span class="proto-port">پورت {{ udp_port }} — سریع‌تر</span>
+      </a>
+      <a class="proto-btn" href="/sub/{{ user.token }}/tcp">
+        {{ wifi_icon() }}
+        <span class="proto-name">TCP</span>
+        <span class="proto-port">پورت {{ tcp_port }} — پایدارتر</span>
+      </a>
+    </div>
+
+    <div class="info-list">
+      <div class="info-row">
+        <span class="k">وضعیت اکانت</span>
+        <span class="badge {{ status_label }}"><span class="dot"></span>
+          {% if status_label == "active" %}فعال
+          {% elif status_label == "disabled" %}غیرفعال
+          {% elif status_label == "expired" %}منقضی شده
+          {% elif status_label == "over_quota" %}اتمام حجم
+          {% else %}لغو شده{% endif %}
+        </span>
+      </div>
+      <div class="info-row">
+        <span class="k">تاریخ انقضا</span>
+        <span>{{ user.expire_at.strftime("%Y-%m-%d") if user.expire_at else "نامحدود" }}</span>
+      </div>
+    </div>
+
+    <div class="help-note">
+      برای اتصال، یکی از فایل‌های بالا را دانلود کرده و در اپلیکیشن OpenVPN Connect (اندروید/iOS/ویندوز/مک) باز کنید.
+      اگر یک پروتکل فیلتر یا مسدود بود، پروتکل دیگر را امتحان کنید. این لینک را در اختیار افراد دیگر قرار ندهید.
+    </div>
+  </div>
+</div>
+</body>
+</html>

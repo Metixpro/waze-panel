@@ -1,0 +1,42 @@
+# Waze Panel — OpenVPN TCP instance
+# Rendered by install.sh. Placeholders: __TCP_PORT__ __APP_DIR__ __TCP_MGMT_PORT__
+
+port __TCP_PORT__
+proto tcp4-server
+dev tun-waze-tcp
+topology subnet
+
+ca /etc/openvpn/easy-rsa/pki/ca.crt
+cert /etc/openvpn/easy-rsa/pki/issued/server.crt
+key /etc/openvpn/easy-rsa/pki/private/server.key
+dh /etc/openvpn/server/dh.pem
+tls-crypt /etc/openvpn/server/ta.key
+crl-verify /etc/openvpn/server/crl.pem
+
+server 10.9.0.0 255.255.255.0
+ifconfig-pool-persist /etc/openvpn/server/ipp-tcp.txt
+
+push "redirect-gateway def1 bypass-dhcp"
+push "dhcp-option DNS 1.1.1.1"
+push "dhcp-option DNS 8.8.8.8"
+
+keepalive 10 120
+cipher AES-256-GCM
+auth SHA256
+data-ciphers AES-256-GCM:AES-128-GCM
+
+user nobody
+group nogroup
+persist-key
+persist-tun
+
+status /etc/openvpn/server/status-tcp.log
+status-version 3
+log-append /var/log/openvpn/tcp.log
+verb 3
+
+management 127.0.0.1 __TCP_MGMT_PORT__
+
+script-security 2
+client-connect __APP_DIR__/scripts/client-connect-tcp.py
+client-disconnect __APP_DIR__/scripts/client-disconnect-tcp.py

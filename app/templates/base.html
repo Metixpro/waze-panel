@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}{{ panel_title }}{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><path fill=%22%237c5cff%22 d=%22M13 2 3 14h7l-1 8 10-12h-7l1-8Z%22/></svg>" />
+  {% block head %}{% endblock %}
+</head>
+<body>
+  {% from "_icons.html" import logo, dashboard_icon, users_icon, settings_icon, logout_icon %}
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">{{ logo() }}</div>
+        <div>
+          <div class="title">{{ panel_title }}</div>
+          <div class="subtitle">OpenVPN Admin</div>
+        </div>
+      </div>
+
+      <a class="nav-link {% if active == 'dashboard' %}active{% endif %}" href="/dashboard">
+        {{ dashboard_icon() }} داشبورد
+      </a>
+      <a class="nav-link {% if active == 'users' %}active{% endif %}" href="/users">
+        {{ users_icon() }} کاربران
+      </a>
+      <a class="nav-link {% if active == 'settings' %}active{% endif %}" href="/settings">
+        {{ settings_icon() }} تنظیمات
+      </a>
+
+      <div class="sidebar-footer">
+        <a class="nav-link" href="/logout">{{ logout_icon() }} خروج</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <div class="page-title">{% block page_title %}{% endblock %}</div>
+          <div class="page-sub">{% block page_sub %}{% endblock %}</div>
+        </div>
+        <div class="topbar-right">
+          {% block topbar_right %}{% endblock %}
+          <div class="admin-chip"><span class="dot"></span> {{ admin.username }}</div>
+        </div>
+      </div>
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <div id="toast-stack"></div>
+
+  <script src="/static/js/common.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

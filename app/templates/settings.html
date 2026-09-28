@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% set active = "settings" %}
+{% block page_title %}تنظیمات{% endblock %}
+{% block page_sub %}پیکربندی آدرس سرور، عنوان پنل و رمز عبور ادمین{% endblock %}
+
+{% block content %}
+<div class="grid cols-2">
+  <div class="card">
+    <div class="card-title"><span>تنظیمات پنل و آدرس سرور</span></div>
+    <form id="settings-form">
+      <div class="field">
+        <label>آدرس/دامنه سرور (برای کانفیگ کاربران)</label>
+        <input type="text" name="server_address" class="mono" value="{{ server_address }}" required />
+        <div class="hint">این مقدار داخل فایل‌های .ovpn به عنوان remote قرار می‌گیرد.</div>
+      </div>
+      <div class="field">
+        <label>عنوان پنل</label>
+        <input type="text" name="panel_title" value="{{ panel_title }}" required />
+      </div>
+      <div class="field">
+        <label>آدرس پایه لینک اشتراک (اختیاری)</label>
+        <input type="text" name="subscription_base_url" class="mono" value="{{ subscription_base_url }}" placeholder="https://panel.example.com" />
+        <div class="hint">اگر پنل پشت دامنه/Nginx است اینجا وارد کنید تا لینک‌های ساب درست ساخته شوند.</div>
+      </div>
+      <button type="submit" class="btn primary">ذخیره تنظیمات</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span>تغییر رمز عبور ادمین</span></div>
+    <form id="password-form">
+      <div class="field">
+        <label>رمز عبور فعلی</label>
+        <input type="password" name="current_password" required />
+      </div>
+      <div class="field">
+        <label>رمز عبور جدید</label>
+        <input type="password" name="new_password" minlength="6" required />
+      </div>
+      <button type="submit" class="btn primary">تغییر رمز</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span>اطلاعات فنی (فقط خواندنی)</span></div>
+    <div class="info-list">
+      <div class="info-row"><span class="k">پورت پنل وب</span><span class="mono">{{ panel_port }}</span></div>
+      <div class="info-row"><span class="k">پورت OpenVPN UDP</span><span class="mono">{{ udp_port }}</span></div>
+      <div class="info-row"><span class="k">پورت OpenVPN TCP</span><span class="mono">{{ tcp_port }}</span></div>
+    </div>
+    <div class="hint mt-16">تغییر پورت‌های OpenVPN از طریق فایل‌های سرویس در /etc/openvpn/server انجام می‌شود و نیاز به ری‌استارت سرویس دارد.</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("settings-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  try {
+    await api("/api/settings", {
+      method: "POST",
+      body: {
+        server_address: fd.get("server_address"),
+        panel_title: fd.get("panel_title"),
+        subscription_base_url: fd.get("subscription_base_url"),
+      },
+    });
+    toast("تنظیمات ذخیره شد.");
+  } catch (e) {
+    toast(e.message, "error");
+  }
+});
+
+document.getElementById("password-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  try {
+    await api("/api/settings/password", {
+      method: "POST",
+      body: {
+        current_password: fd.get("current_password"),
+        new_password: fd.get("new_password"),
+      },
+    });
+    toast("رمز عبور تغییر کرد.");
+    ev.target.reset();
+  } catch (e) {
+    toast(e.message, "error");
+  }
+});
+</script>
+{% endblock %}
