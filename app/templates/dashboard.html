@@ -177,7 +177,7 @@ async function loadStats() {
       onlineList.innerHTML = '<div class="text-faint" style="font-size:13px;">در حال حاضر کاربری آنلاین نیست.</div>';
     } else {
       onlineList.innerHTML = s.online_usernames.map(u =>
-        `<div class="info-row"><span class="k mono">${u}</span><span class="badge active"><span class="dot"></span> آنلاین</span></div>`
+        `<div class="info-row"><span class="k mono">${esc(u)}</span><span class="badge active"><span class="dot"></span> آنلاین</span></div>`
       ).join("");
     }
 

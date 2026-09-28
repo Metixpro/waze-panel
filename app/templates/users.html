@@ -91,6 +91,7 @@
       <input type="text" id="detail-sublink" class="mono" readonly style="flex:1;" />
       <button class="btn icon-only sm" onclick="copyText(document.getElementById('detail-sublink').value)">{{ copy_icon() }}</button>
     </div>
+    <div class="qr-box mt-16" id="detail-qr" title="اسکن با گوشی"></div>
 
     <div class="flex gap-8 mt-16">
       <a class="btn sm w-full" id="detail-dl-udp" href="#" target="_blank">{{ download_icon() }} کانفیگ UDP</a>
@@ -132,5 +133,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="/static/js/users.js"></script>
 {% endblock %}

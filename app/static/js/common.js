@@ -1,5 +1,28 @@
 // Shared helpers used by every panel page.
 
+// Escape anything interpolated into innerHTML / attributes.
+function esc(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Render a QR code into `el` (qrcodejs from cdnjs). Hides the box if the
+// library couldn't load, so the page still works offline / behind filters.
+function renderQr(el, text, size = 168) {
+  if (!el) return;
+  el.innerHTML = "";
+  if (typeof QRCode === "undefined" || !text) {
+    el.style.display = "none";
+    return;
+  }
+  el.style.display = "";
+  new QRCode(el, { text, width: size, height: size, colorDark: "#0b0e17", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+}
+
 function toast(message, type = "success") {
   const stack = document.getElementById("toast-stack");
   if (!stack) return;

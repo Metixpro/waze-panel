@@ -2,6 +2,11 @@ server {
     listen 80;
     server_name __DOMAIN__;
 
+    # Hook-only API: never reachable from the outside.
+    location /internal/ {
+        return 404;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:__PANEL_PORT__;
         proxy_set_header Host $host;

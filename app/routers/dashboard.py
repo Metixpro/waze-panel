@@ -69,7 +69,9 @@ def dashboard_stats(admin: AdminUser = Depends(get_optional_admin), db: Session 
         .scalar()
         or 0
     )
-    total_bytes = db.query(func.coalesce(func.sum(VpnUser.data_used_bytes), 0)).scalar() or 0
+    # From the daily history rather than users' quota counters, so resetting
+    # someone's usage doesn't make served traffic disappear from the total.
+    total_bytes = db.query(func.coalesce(func.sum(TrafficSample.bytes_total), 0)).scalar() or 0
 
     # last 14 days chart data
     since = today - datetime.timedelta(days=13)

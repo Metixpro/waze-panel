@@ -951,3 +951,17 @@ table.data tr:hover td {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ---------- QR code ---------- */
+
+.qr-box {
+  display: flex;
+  justify-content: center;
+}
+
+.qr-box img,
+.qr-box canvas {
+  background: #fff;
+  padding: 10px;
+  border-radius: 12px;
+}

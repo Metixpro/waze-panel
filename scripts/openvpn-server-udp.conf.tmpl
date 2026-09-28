@@ -1,5 +1,5 @@
 # Waze Panel — OpenVPN UDP instance
-# Rendered by install.sh. Placeholders: __UDP_PORT__ __APP_DIR__ __UDP_MGMT_PORT__
+# Rendered by install.sh. Placeholders: __UDP_PORT__ __APP_DIR__ __UDP_MGMT_PORT__ __OVPN_GROUP__
 
 port __UDP_PORT__
 proto udp4
@@ -26,7 +26,7 @@ auth SHA256
 data-ciphers AES-256-GCM:AES-128-GCM
 
 user nobody
-group nogroup
+group __OVPN_GROUP__
 persist-key
 persist-tun
 

@@ -50,7 +50,17 @@
     </div>
     <div class="hint mt-16">تغییر پورت‌های OpenVPN از طریق فایل‌های سرویس در /etc/openvpn/server انجام می‌شود و نیاز به ری‌استارت سرویس دارد.</div>
   </div>
+  <div class="card">
+    <div class="card-title"><span>پشتیبان‌گیری</span></div>
+    <p class="text-dim" style="font-size:13px; line-height:1.9; margin:0 0 16px;">
+      یک فایل کامل شامل پایگاه‌داده، تنظیمات و <b>زیرساخت گواهی (CA)</b> دانلود می‌شود.
+      بدون CA، اگر سرور از دست برود همه‌ی کانفیگ‌های کاربران بی‌اعتبار می‌شوند؛ این فایل را جای امنی بیرون از سرور نگه دارید.
+    </p>
+    <a class="btn primary" href="/api/settings/backup">دانلود فایل پشتیبان</a>
+    <div class="hint mt-16">بازگردانی روی سرور جدید: <span class="mono">waze-panel restore &lt;file&gt;</span></div>
+  </div>
 </div>
+
 {% endblock %}
 
 {% block scripts %}

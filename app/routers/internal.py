@@ -3,7 +3,9 @@ hook scripts (127.0.0.1, shared-secret header). Never exposed publicly --
 main.py should make sure Uvicorn only binds where Nginx/the firewall keep
 this reachable from localhost, and the shared token keeps other local
 processes from being able to spoof hook calls."""
-from fastapi import APIRouter, Depends, Header, HTTPException
+import hmac
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -14,9 +16,18 @@ from app.openvpn.scheduler import finalize_disconnect
 
 router = APIRouter(prefix="/internal")
 
+_LOOPBACK = {"127.0.0.1", "::1"}
 
-def _check_token(x_internal_token: str | None) -> None:
-    if not x_internal_token or x_internal_token != settings.INTERNAL_TOKEN:
+
+def _check_caller(request: Request, x_internal_token: str | None) -> None:
+    # Hooks talk to us directly over loopback. Anything that came through a
+    # reverse proxy (Nginx also connects from 127.0.0.1) carries forwarding
+    # headers, so those are rejected too.
+    host = request.client.host if request.client else ""
+    proxied = "x-forwarded-for" in request.headers or "x-real-ip" in request.headers
+    if host not in _LOOPBACK or proxied:
+        raise HTTPException(status_code=404, detail="Not Found")
+    if not x_internal_token or not hmac.compare_digest(x_internal_token, settings.INTERNAL_TOKEN):
         raise HTTPException(status_code=403, detail="forbidden")
 
 
@@ -35,10 +46,11 @@ class DisconnectPayload(BaseModel):
 @router.post("/hooks/connect")
 def hook_connect(
     payload: ConnectPayload,
+    request: Request,
     x_internal_token: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ):
-    _check_token(x_internal_token)
+    _check_caller(request, x_internal_token)
 
     user = db.query(VpnUser).filter(VpnUser.username == payload.common_name).first()
     if user is None:
@@ -60,9 +72,10 @@ def hook_connect(
 @router.post("/hooks/disconnect")
 def hook_disconnect(
     payload: DisconnectPayload,
+    request: Request,
     x_internal_token: str | None = Header(default=None),
 ):
-    _check_token(x_internal_token)
+    _check_caller(request, x_internal_token)
     finalize_disconnect(
         payload.proto, payload.common_name, payload.bytes_received, payload.bytes_sent
     )

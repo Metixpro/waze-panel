@@ -17,6 +17,18 @@ from app.templating import templates
 router = APIRouter()
 
 _USERNAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{2,31}$")
+# CNs already used by the PKI itself.
+_RESERVED_USERNAMES = {"server", "ca"}
+
+
+def _iso(dt: datetime.datetime | None) -> str | None:
+    """Timestamps are stored as naive UTC; tag them so browsers don't read
+    them as local time (which shifted every date by the viewer's offset)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt.isoformat()
 
 
 class CreateUserRequest(BaseModel):
@@ -62,11 +74,9 @@ def _serialize(user: VpnUser, online_usernames: set[str]) -> dict:
         "online": user.username in online_usernames,
         "data_limit_bytes": user.data_limit_bytes,
         "data_used_bytes": user.data_used_bytes,
-        "expire_at": user.expire_at.isoformat() if user.expire_at else None,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
-        "last_connected_at": user.last_connected_at.isoformat()
-        if user.last_connected_at
-        else None,
+        "expire_at": _iso(user.expire_at),
+        "created_at": _iso(user.created_at),
+        "last_connected_at": _iso(user.last_connected_at),
         "last_ip": user.last_ip,
         "token": user.token,
         "sub_link": f"{settings.public_base_url}/sub/{user.token}",
@@ -108,6 +118,9 @@ def create_user(
             detail="نام کاربری باید با حرف شروع شود و فقط شامل حروف/عدد انگلیسی، خط تیره و "
             "زیرخط باشد (۳ تا ۳۲ کاراکتر).",
         )
+
+    if username.lower() in _RESERVED_USERNAMES:
+        raise HTTPException(status_code=400, detail="این نام کاربری رزرو شده است؛ نام دیگری انتخاب کنید.")
 
     if db.query(VpnUser).filter(VpnUser.username == username).first():
         raise HTTPException(status_code=409, detail="این نام کاربری قبلا استفاده شده است.")
@@ -203,11 +216,7 @@ def update_user(
 
 
 def _kill_everywhere(username: str) -> None:
-    for port in (settings.OVPN_UDP_MGMT_PORT, settings.OVPN_TCP_MGMT_PORT):
-        try:
-            mgmt.kill_client(port, username)
-        except mgmt.ManagementError:
-            pass
+    mgmt.kill_everywhere((settings.OVPN_UDP_MGMT_PORT, settings.OVPN_TCP_MGMT_PORT), username)
 
 
 @router.post("/api/users/{user_id}/toggle")

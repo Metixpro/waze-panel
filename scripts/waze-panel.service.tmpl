@@ -6,11 +6,15 @@ After=network.target
 Type=simple
 EnvironmentFile=/etc/waze-panel/panel.env
 WorkingDirectory=__APP_DIR__
-ExecStart=__APP_DIR__/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port __PANEL_PORT__ --workers 1
+# __PANEL_HOST__ is 127.0.0.1 when Nginx terminates HTTPS in front of the
+# panel, 0.0.0.0 otherwise.
+ExecStart=__APP_DIR__/venv/bin/uvicorn app.main:app --host __PANEL_HOST__ --port __PANEL_PORT__ --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1
 Restart=on-failure
 RestartSec=3
 User=root
 Group=root
+# The DB holds every user's subscription token: keep new files private.
+UMask=0077
 
 # A single worker is required: the traffic-accounting scheduler and the
 # in-memory online-user tracker both assume one process.

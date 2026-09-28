@@ -1,8 +1,11 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.backup import create_backup
 from app.config import settings
 from app.database import get_db
 from app.deps import get_optional_admin
@@ -53,9 +56,16 @@ def update_settings(
     if not admin:
         raise HTTPException(status_code=401, detail="unauthorized")
 
-    set_value(db, "SERVER_ADDRESS", payload.server_address.strip())
+    address = payload.server_address.strip()
+    if not re.fullmatch(r"[A-Za-z0-9.\-:\[\]]{1,253}", address):
+        raise HTTPException(status_code=400, detail="آدرس سرور باید یک IP یا دامنه معتبر باشد.")
+    base_url = payload.subscription_base_url.strip()
+    if base_url and not re.fullmatch(r"https?://[^\s\"'<>]+", base_url):
+        raise HTTPException(status_code=400, detail="آدرس پایه لینک اشتراک باید با http:// یا https:// شروع شود.")
+
+    set_value(db, "SERVER_ADDRESS", address)
     set_value(db, "PANEL_TITLE", payload.panel_title.strip() or "Waze Panel")
-    set_value(db, "SUBSCRIPTION_BASE_URL", payload.subscription_base_url.strip())
+    set_value(db, "SUBSCRIPTION_BASE_URL", base_url)
     return {"ok": True}
 
 
@@ -76,3 +86,15 @@ def change_password(
     admin.password_hash = hash_password(payload.new_password)
     db.commit()
     return {"ok": True}
+
+
+@router.get("/api/settings/backup")
+def download_backup(admin: AdminUser | None = Depends(get_optional_admin)):
+    if not admin:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    filename, data = create_backup()
+    return Response(
+        content=data,
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

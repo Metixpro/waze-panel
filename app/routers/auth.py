@@ -1,16 +1,59 @@
+import datetime
+import threading
+import time
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.deps import SESSION_KEY, get_optional_admin
 from app.models import AdminUser
-from app.security import verify_password
+from app.security import hash_password, verify_password
 from app.templating import templates
-from app.config import settings
-import datetime
 
 router = APIRouter()
+
+# Brute-force protection: after MAX_FAILURES failed logins from one IP
+# within WINDOW_SECONDS, that IP is refused until the window slides past.
+MAX_FAILURES = 5
+WINDOW_SECONDS = 600
+
+_failures: dict[str, list[float]] = {}
+_failures_lock = threading.Lock()
+
+# Compared against when the username doesn't exist, so a wrong username
+# takes as long as a wrong password (no username enumeration by timing).
+_DUMMY_HASH = hash_password("waze-panel-dummy-password")
+
+
+def _client_ip(request: Request) -> str:
+    host = request.client.host if request.client else "unknown"
+    # Only trust forwarding headers when the direct peer is a local proxy.
+    if host in ("127.0.0.1", "::1"):
+        forwarded = request.headers.get("x-real-ip") or request.headers.get("x-forwarded-for", "")
+        forwarded = forwarded.split(",")[0].strip()
+        if forwarded:
+            return forwarded
+    return host
+
+
+def _recent_failures(ip: str, now: float) -> list[float]:
+    attempts = [t for t in _failures.get(ip, []) if now - t < WINDOW_SECONDS]
+    if attempts:
+        _failures[ip] = attempts
+    else:
+        _failures.pop(ip, None)
+    return attempts
+
+
+def _login_error(request: Request, message: str, status_code: int):
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": message, "panel_title": settings.PANEL_TITLE},
+        status_code=status_code,
+    )
 
 
 @router.get("/login")
@@ -29,21 +72,32 @@ def login_submit(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    ip = _client_ip(request)
+    now = time.time()
+    with _failures_lock:
+        attempts = _recent_failures(ip, now)
+        if len(attempts) >= MAX_FAILURES:
+            wait_min = int((WINDOW_SECONDS - (now - attempts[0])) // 60) + 1
+            return _login_error(
+                request,
+                f"تعداد تلاش‌های ناموفق زیاد است. {wait_min} دقیقه دیگر دوباره امتحان کنید.",
+                429,
+            )
+
     admin = db.query(AdminUser).filter(AdminUser.username == username).first()
-    if not admin or not verify_password(password, admin.password_hash):
-        return templates.TemplateResponse(
-            "login.html",
-            {
-                "request": request,
-                "error": "نام کاربری یا رمز عبور اشتباه است.",
-                "panel_title": settings.PANEL_TITLE,
-            },
-            status_code=401,
-        )
+    ok = verify_password(password, admin.password_hash if admin else _DUMMY_HASH)
+    if not admin or not ok:
+        with _failures_lock:
+            _failures.setdefault(ip, []).append(now)
+        return _login_error(request, "نام کاربری یا رمز عبور اشتباه است.", 401)
+
+    with _failures_lock:
+        _failures.pop(ip, None)
 
     admin.last_login_at = datetime.datetime.now(datetime.timezone.utc)
     db.commit()
 
+    request.session.clear()
     request.session[SESSION_KEY] = admin.id
     return RedirectResponse(url="/dashboard", status_code=302)
 

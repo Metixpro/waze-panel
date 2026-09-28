@@ -17,9 +17,8 @@ persist-tun
 remote-cert-tls server
 cipher AES-256-GCM
 auth SHA256
-key-direction 1
 verb 3
-<ca>
+{extra}<ca>
 {ca}
 </ca>
 <cert>
@@ -40,9 +39,14 @@ def build_ovpn(username: str, proto: str) -> str:
         raise ValueError("proto must be 'udp' or 'tcp'")
 
     port = settings.OVPN_UDP_PORT if proto == "udp" else settings.OVPN_TCP_PORT
+    # UDP has no connection teardown: without this the server only notices a
+    # client left after the keepalive timeout (minutes), so it would keep
+    # showing as online and its final traffic would be accounted late.
+    extra = "explicit-exit-notify 2\n" if proto == "udp" else ""
 
     return _CLIENT_TEMPLATE.format(
         proto=proto,
+        extra=extra,
         address=settings.SERVER_ADDRESS,
         port=port,
         ca=certs.read_ca_cert().strip(),

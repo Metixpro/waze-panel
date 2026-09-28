@@ -1,5 +1,5 @@
 # Waze Panel — OpenVPN TCP instance
-# Rendered by install.sh. Placeholders: __TCP_PORT__ __APP_DIR__ __TCP_MGMT_PORT__
+# Rendered by install.sh. Placeholders: __TCP_PORT__ __APP_DIR__ __TCP_MGMT_PORT__ __OVPN_GROUP__
 
 port __TCP_PORT__
 proto tcp4-server
@@ -26,7 +26,7 @@ auth SHA256
 data-ciphers AES-256-GCM:AES-128-GCM
 
 user nobody
-group nogroup
+group __OVPN_GROUP__
 persist-key
 persist-tun
 

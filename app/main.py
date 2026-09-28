@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -18,7 +19,22 @@ logging.basicConfig(
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-app = FastAPI(title=settings.APP_NAME, docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    db = SessionLocal()
+    try:
+        load_overrides(db)
+    finally:
+        db.close()
+    start_scheduler()
+    try:
+        yield
+    finally:
+        stop_scheduler()
+
+
+app = FastAPI(title=settings.APP_NAME, docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
 app.add_middleware(
     SessionMiddleware,
@@ -36,19 +52,3 @@ app.include_router(users.router)
 app.include_router(subscription.router)
 app.include_router(internal.router)
 app.include_router(settings_router.router)
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    init_db()
-    db = SessionLocal()
-    try:
-        load_overrides(db)
-    finally:
-        db.close()
-    start_scheduler()
-
-
-@app.on_event("shutdown")
-def on_shutdown() -> None:
-    stop_scheduler()

@@ -46,8 +46,8 @@ function renderRows() {
       <td>
         <div class="user-cell">
           <div>
-            <div class="mono" style="font-weight:700;">${u.username}</div>
-            ${u.note ? `<div class="text-faint" style="font-size:11.5px;">${u.note}</div>` : ""}
+            <div class="mono" style="font-weight:700;">${esc(u.username)}</div>
+            ${u.note ? `<div class="text-faint" style="font-size:11.5px;">${esc(u.note)}</div>` : ""}
           </div>
         </div>
       </td>
@@ -56,10 +56,10 @@ function renderRows() {
       <td style="font-size:12.5px;">${u.expire_at ? fmtDate(u.expire_at) : "نامحدود"}</td>
       <td style="font-size:12.5px;">${u.last_connected_at ? fmtDate(u.last_connected_at) : "—"}</td>
       <td class="actions-cell">
-        <button class="btn icon-only sm" title="کپی لینک" onclick="copyText('${u.sub_link}')">
+        <button class="btn icon-only sm js-copy" title="کپی لینک" data-copy="${esc(u.sub_link)}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         </button>
-        <button class="btn icon-only sm" title="جزئیات" onclick="openDetail(${u.id})">
+        <button class="btn icon-only sm" title="جزئیات" data-detail="${u.id}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
         </button>
       </td>
@@ -78,6 +78,12 @@ async function loadUsers() {
 }
 
 document.getElementById("search-input").addEventListener("input", renderRows);
+document.getElementById("users-tbody").addEventListener("click", (ev) => {
+  const copyBtn = ev.target.closest(".js-copy");
+  if (copyBtn) return copyText(copyBtn.dataset.copy);
+  const detailBtn = ev.target.closest("[data-detail]");
+  if (detailBtn) openDetail(Number(detailBtn.dataset.detail));
+});
 document.getElementById("refresh-btn").addEventListener("click", loadUsers);
 document.getElementById("new-user-btn").addEventListener("click", () => openModal("modal-create"));
 
@@ -106,6 +112,7 @@ function fillDetail(u) {
   document.getElementById("detail-username").textContent = u.username;
   document.getElementById("detail-created").textContent = "تاریخ ساخت: " + fmtDate(u.created_at);
   document.getElementById("detail-sublink").value = u.sub_link;
+  renderQr(document.getElementById("detail-qr"), u.sub_link);
   document.getElementById("detail-dl-udp").href = `/api/users/${u.id}/config/udp`;
   document.getElementById("detail-dl-tcp").href = `/api/users/${u.id}/config/tcp`;
 

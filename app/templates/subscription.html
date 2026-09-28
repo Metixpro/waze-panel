@@ -70,11 +70,21 @@
       </div>
     </div>
 
+    <div class="qr-box mt-16" id="sub-qr" title="برای باز کردن همین صفحه روی گوشی اسکن کنید"></div>
+
     <div class="help-note">
       برای اتصال، یکی از فایل‌های بالا را دانلود کرده و در اپلیکیشن OpenVPN Connect (اندروید/iOS/ویندوز/مک) باز کنید.
       اگر یک پروتکل فیلتر یا مسدود بود، پروتکل دیگر را امتحان کنید. این لینک را در اختیار افراد دیگر قرار ندهید.
     </div>
   </div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  (function () {
+    var el = document.getElementById("sub-qr");
+    if (typeof QRCode === "undefined") { el.style.display = "none"; return; }
+    new QRCode(el, { text: window.location.href, width: 150, height: 150, colorDark: "#0b0e17", colorLight: "#ffffff" });
+  })();
+</script>
 </body>
 </html>

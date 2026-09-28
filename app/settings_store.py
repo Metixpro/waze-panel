@@ -24,6 +24,9 @@ def load_overrides(db: Session) -> None:
 def set_value(db: Session, key: str, value: str) -> None:
     if key not in _RUNTIME_KEYS:
         raise ValueError(f"'{key}' is not a runtime-editable setting")
+    # Values end up inside KEY="..." lines of panel.env: never let one
+    # break out of its line or its quotes.
+    value = re.sub(r'["\\\r\n`$]', "", value).strip()
 
     row = db.get(Setting, key)
     if row is None:

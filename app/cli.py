@@ -5,6 +5,7 @@ maintenance:
     python -m app.cli create-admin --username admin --password 'secret'
     python -m app.cli reset-password --username admin --password 'newsecret'
     python -m app.cli list-admins
+    python -m app.cli backup --out /root
 """
 import argparse
 import sys
@@ -49,6 +50,41 @@ def cmd_reset_password(args) -> None:
         db.close()
 
 
+def cmd_delete_admin(args) -> None:
+    db = SessionLocal()
+    try:
+        admin = db.query(AdminUser).filter(AdminUser.username == args.username).first()
+        if not admin:
+            print(f"Admin '{args.username}' not found.", file=sys.stderr)
+            sys.exit(1)
+        if db.query(AdminUser).count() <= 1:
+            print("Refusing to delete the last admin.", file=sys.stderr)
+            sys.exit(1)
+        db.delete(admin)
+        db.commit()
+        print(f"Admin '{args.username}' deleted.")
+    finally:
+        db.close()
+
+
+def cmd_backup(args) -> None:
+    import os
+    from pathlib import Path
+
+    from app.backup import create_backup
+
+    filename, data = create_backup()
+    out = Path(args.out) if args.out else Path.cwd() / filename
+    if out.is_dir():
+        out = out / filename
+    old_umask = os.umask(0o077)
+    try:
+        out.write_bytes(data)
+    finally:
+        os.umask(old_umask)
+    print(out)
+
+
 def cmd_list_admins(_args) -> None:
     db = SessionLocal()
     try:
@@ -75,6 +111,14 @@ def main() -> None:
     p.set_defaults(func=cmd_reset_password)
 
     sub.add_parser("list-admins").set_defaults(func=cmd_list_admins)
+
+    p = sub.add_parser("delete-admin")
+    p.add_argument("--username", required=True)
+    p.set_defaults(func=cmd_delete_admin)
+
+    p = sub.add_parser("backup")
+    p.add_argument("--out", help="output file or directory (default: current directory)")
+    p.set_defaults(func=cmd_backup)
 
     args = parser.parse_args()
     args.func(args)

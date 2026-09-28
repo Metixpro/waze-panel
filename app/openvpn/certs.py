@@ -19,13 +19,24 @@ class CertError(RuntimeError):
     pass
 
 
+# easy-rsa's defaults are 825 days for certificates and 180 days for the
+# CRL. OpenVPN refuses every client once crl.pem is past its nextUpdate, so
+# those defaults silently take the whole VPN down months after install.
+EASYRSA_ENV = {
+    "EASYRSA_BATCH": "1",
+    "EASYRSA_CERT_EXPIRE": "3650",
+    "EASYRSA_CRL_DAYS": "3650",
+    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin",
+}
+
+
 def _run_easyrsa(*args: str) -> subprocess.CompletedProcess:
     env_prefix = ["./easyrsa"]
     try:
         result = subprocess.run(
             env_prefix + list(args),
             cwd=str(settings.EASYRSA_DIR),
-            env={"EASYRSA_BATCH": "1", "PATH": "/usr/bin:/bin:/usr/local/bin"},
+            env=EASYRSA_ENV,
             capture_output=True,
             text=True,
         )
@@ -64,12 +75,21 @@ def revoke_client_cert(username: str) -> None:
     _install_crl()
 
 
+def refresh_crl() -> None:
+    """Re-sign the CRL (pushing its expiry out again) and install it."""
+    _run_easyrsa("gen-crl")
+    _install_crl()
+
+
 def _install_crl() -> None:
     src = settings.EASYRSA_PKI_DIR / "crl.pem"
     dst = settings.OPENVPN_SERVER_DIR / "crl.pem"
     if src.exists():
-        shutil.copyfile(src, dst)
-        dst.chmod(0o644)
+        # write-then-rename so OpenVPN never reads a half-written CRL
+        tmp = dst.with_suffix(".pem.tmp")
+        shutil.copyfile(src, tmp)
+        tmp.chmod(0o644)
+        tmp.replace(dst)
 
 
 def _extract_cert_block(text: str) -> str:
