@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1012" />
   <title>ورود · {{ cfg.PANEL_TITLE }}</title>
   <script>
     (function () {
@@ -16,63 +17,50 @@
   <link rel="preload" href="/static/vendor/fonts/Vazirmatn-Variable.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/static/css/style.css?v={{ asset_v }}" />
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.webmanifest" />
 </head>
 <body>
-{% from "_icons.html" import icon %}
-<div class="auth">
-  <div class="auth-form">
-    <div class="auth-card">
-      <div class="brand-logo" style="width:52px;height:52px;border-radius:16px">{{ icon("logo") }}</div>
-      <h1>ورود به {{ cfg.PANEL_TITLE }}</h1>
-      <p class="sub">برای مدیریت سرور و کاربران وارد شوید.</p>
+{% from "_icons.html" import icon, logo %}
+<main class="auth">
+  <div class="auth-box">
+    <div class="auth-brand">{{ logo() }}<span>{{ cfg.PANEL_TITLE }}</span></div>
+
+    <div class="card auth-card">
+      <h1>ورود به پنل</h1>
+      <p class="sub">با حساب مدیر وارد شوید.</p>
 
       {% if error %}
-      <div class="alert" style="margin-bottom:16px">{{ icon("alert") }}<span>{{ error }}</span></div>
+      <div class="alert bad" style="margin-bottom:16px" role="alert">{{ icon("alert") }}<span>{{ error }}</span></div>
       {% endif %}
 
       <form method="post" action="/login" id="login-form">
         <div class="field">
           <label for="username">نام کاربری</label>
-          <div class="input-icon">
-            {{ icon("user") }}
-            <input id="username" type="text" name="username" autocomplete="username" dir="ltr" required autofocus />
-          </div>
+          <input id="username" type="text" name="username" autocomplete="username" dir="ltr" required autofocus
+                 autocapitalize="off" spellcheck="false" value="{{ username or '' }}" />
         </div>
         <div class="field">
           <label for="password">رمز عبور</label>
           <div class="input-group">
             <input id="password" type="password" name="password" autocomplete="current-password" dir="ltr" required />
-            <button class="btn ghost" type="button" id="toggle-pass" title="نمایش رمز">{{ icon("eye") }}</button>
+            <button class="btn" type="button" id="toggle-pass" title="نمایش رمز" aria-label="نمایش رمز">{{ icon("eye") }}</button>
           </div>
         </div>
-        <button type="submit" class="btn primary block" id="login-btn" style="height:46px; margin-top:8px">ورود به پنل</button>
+        <button type="submit" class="btn primary block" id="login-btn" style="height:40px; margin-top:6px">ورود</button>
       </form>
-      <p class="muted center" style="font-size:12px; margin-top:22px">رمز را فراموش کرده‌اید؟ روی سرور اجرا کنید: <span class="mono">waze-panel reset-password</span></p>
     </div>
-  </div>
 
-  <div class="auth-art">
-    <div class="blob b1"></div><div class="blob b2"></div><div class="grid-lines"></div>
-    <div class="row" style="gap:12px">
-      <div class="brand-logo">{{ icon("logo") }}</div>
-      <div><div class="brand-name">{{ cfg.PANEL_TITLE }}</div><div style="font-size:12px; color:#9aa2c7">OpenVPN Control Panel</div></div>
-    </div>
-    <div>
-      <h2>مدیریت حرفه‌ای OpenVPN،<br />ساده و لحظه‌ای.</h2>
-      <p>کاربر بسازید، لینک اشتراک بدهید و مصرف هر نفر را زنده ببینید؛ همه روی هسته‌ی اصلی OpenVPN.</p>
-      <div class="feat">
-        <div>{{ icon("wifi") }} اتصال همزمان UDP و TCP برای هر کاربر</div>
-        <div>{{ icon("link") }} لینک اشتراک اختصاصی با QR و دانلود یک‌کلیکی</div>
-        <div>{{ icon("activity") }} کنترل حجم و انقضا، حتی وسط اتصال</div>
-      </div>
-    </div>
-    <div style="font-size:12px; color:#7d86ad">Waze Panel · open source</div>
+    <p class="auth-foot">
+      رمز را فراموش کرده‌اید؟ روی سرور اجرا کنید:<br /><code>waze-panel reset-password</code>
+    </p>
   </div>
-</div>
+</main>
 <script>
+  window.ICONS = null;
+  var pass = document.getElementById("password");
   document.getElementById("toggle-pass").addEventListener("click", function () {
-    var p = document.getElementById("password");
-    p.type = p.type === "password" ? "text" : "password";
+    pass.type = pass.type === "password" ? "text" : "password";
+    pass.focus();
   });
   document.getElementById("login-form").addEventListener("submit", function () {
     document.getElementById("login-btn").classList.add("loading");

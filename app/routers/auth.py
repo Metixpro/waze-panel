@@ -48,10 +48,11 @@ def _recent_failures(ip: str, now: float) -> list[float]:
     return attempts
 
 
-def _login_error(request: Request, message: str, status_code: int):
+def _login_error(request: Request, message: str, status_code: int, username: str = ""):
+    # keep the typed username so only the password has to be retyped
     return templates.TemplateResponse(
         "login.html",
-        {"request": request, "error": message, "panel_title": settings.PANEL_TITLE},
+        {"request": request, "error": message, "panel_title": settings.PANEL_TITLE, "username": username[:64]},
         status_code=status_code,
     )
 
@@ -82,6 +83,7 @@ def login_submit(
                 request,
                 f"تعداد تلاش‌های ناموفق زیاد است. {wait_min} دقیقه دیگر دوباره امتحان کنید.",
                 429,
+                username,
             )
 
     admin = db.query(AdminUser).filter(AdminUser.username == username).first()
@@ -89,7 +91,7 @@ def login_submit(
     if not admin or not ok:
         with _failures_lock:
             _failures.setdefault(ip, []).append(now)
-        return _login_error(request, "نام کاربری یا رمز عبور اشتباه است.", 401)
+        return _login_error(request, "نام کاربری یا رمز عبور اشتباه است.", 401, username)
 
     with _failures_lock:
         _failures.pop(ip, None)

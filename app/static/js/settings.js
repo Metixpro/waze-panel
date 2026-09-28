@@ -93,25 +93,25 @@ const RELAY_ERR = {
 };
 
 function relayStat(h) {
-  if (!h) return `<span class="rstat"><i></i>بررسی نشده</span>`;
-  if (h.ok) return `<span class="rstat ok"><i></i>سالم · <bdi>${fa(h.ms)}ms</bdi></span>`;
-  return `<span class="rstat bad"><i></i>${esc(RELAY_ERR[h.error] || h.error || "خطا")}</span>`;
+  if (!h) return `<span class="status">بررسی نشده</span>`;
+  if (h.ok) return `<span class="status ok">سالم · <bdi>${fa(h.ms)}ms</bdi></span>`;
+  return `<span class="status bad">${esc(RELAY_ERR[h.error] || h.error || "خطا")}</span>`;
 }
 
 function relayRow(r, i, n) {
-  return `<div class="relay ${r.enabled ? "" : "off"}" data-id="${r.id}">
-    <div class="rank">${fa(i + 1)}</div>
-    <div class="info">
-      <div class="nm">${esc(r.name)} ${r.enabled ? relayStat(relayData.health[r.id]) : `<span class="rstat"><i></i>غیرفعال</span>`}</div>
-      <div class="ad"><bdi class="mono">${esc(r.address)}</bdi> <span class="muted">· UDP ${fa(r.udp_port)} · TCP ${fa(r.tcp_port)}</span></div>
+  return `<div class="list-row relay-row ${r.enabled ? "" : "off"}" data-id="${r.id}">
+    <span class="relay-num">${fa(i + 1)}</span>
+    <div class="grow info">
+      <div class="row" style="gap:8px;flex-wrap:wrap"><span class="name">${esc(r.name)}</span>${r.enabled ? relayStat(relayData.health[r.id]) : `<span class="status">غیرفعال</span>`}</div>
+      <div class="meta"><span class="mono ltr">${esc(r.address)}</span><span>· UDP ${fa(r.udp_port)} · TCP ${fa(r.tcp_port)}</span></div>
     </div>
-    <div class="ops">
-      <button class="btn icon sm ghost" data-r="up" title="اولویت بالاتر" ${i === 0 ? "disabled" : ""}>${ic("arrow-up")}</button>
-      <button class="btn icon sm ghost" data-r="down" title="اولویت پایین‌تر" ${i === n - 1 ? "disabled" : ""}>${ic("arrow-down")}</button>
-      <button class="btn icon sm ghost" data-r="setup" title="دستور نصب روی سرور ایران">${ic("terminal")}</button>
-      <button class="btn icon sm ghost" data-r="edit" title="ویرایش">${ic("edit")}</button>
-      <label class="switch" title="${r.enabled ? "غیرفعال کردن" : "فعال کردن"}"><input type="checkbox" data-r="toggle" ${r.enabled ? "checked" : ""} /><span></span></label>
-      <button class="btn icon sm ghost danger-text" data-r="delete" title="حذف">${ic("trash")}</button>
+    <div class="relay-ops">
+      <button class="btn icon sm ghost" type="button" data-r="up" title="اولویت بالاتر" ${i === 0 ? "disabled" : ""}>${ic("arrow-up")}</button>
+      <button class="btn icon sm ghost" type="button" data-r="down" title="اولویت پایین‌تر" ${i === n - 1 ? "disabled" : ""}>${ic("arrow-down")}</button>
+      <button class="btn icon sm ghost" type="button" data-r="setup" title="دستور نصب روی سرور ایران">${ic("terminal")}</button>
+      <button class="btn icon sm ghost" type="button" data-r="edit" title="ویرایش">${ic("edit")}</button>
+      <label class="switch" title="${r.enabled ? "غیرفعال کردن" : "فعال کردن"}"><input type="checkbox" data-r="toggle" ${r.enabled ? "checked" : ""} aria-label="فعال بودن ${esc(r.name)}" /><span></span></label>
+      <button class="btn icon sm ghost danger" type="button" data-r="delete" title="حذف">${ic("trash")}</button>
     </div>
   </div>`;
 }
@@ -120,12 +120,12 @@ function directRow() {
   const d = relayData.direct;
   const any = relayData.relays.length > 0;
   const on = !any || relayData.options.fallback_direct;
-  const tag = !any ? "" : on ? `<span class="rstat"><i></i>پشتیبان آخر</span>` : `<span class="rstat"><i></i>خاموش</span>`;
-  return `<div class="relay direct ${on ? "" : "off"}">
-    <div class="rank">${ic("server")}</div>
-    <div class="info">
-      <div class="nm">اتصال مستقیم به همین سرور ${tag}</div>
-      <div class="ad"><bdi class="mono">${esc(d.address)}</bdi> <span class="muted">· UDP ${fa(d.udp_port)} · TCP ${fa(d.tcp_port)}</span></div>
+  const tag = !any ? "" : on ? `<span class="status">پشتیبان آخر</span>` : `<span class="status">خاموش</span>`;
+  return `<div class="list-row relay-row ${on ? "" : "off"}">
+    <span class="relay-num">${ic("server")}</span>
+    <div class="grow info">
+      <div class="row" style="gap:8px;flex-wrap:wrap"><span class="name">اتصال مستقیم به همین سرور</span>${tag}</div>
+      <div class="meta"><span class="mono ltr">${esc(d.address)}</span><span>· UDP ${fa(d.udp_port)} · TCP ${fa(d.tcp_port)}</span></div>
     </div>
   </div>`;
 }
@@ -134,7 +134,7 @@ function renderRelays() {
   const rs = relayData.relays;
   $("#relay-list").innerHTML = (rs.length
     ? rs.map((r, i) => relayRow(r, i, rs.length)).join("")
-    : `<div class="relay-empty">${ic("route")}<div><b>هنوز سرور واسطی اضافه نشده</b><span>فعلا کاربران مستقیم به همین سرور وصل می‌شوند.</span></div></div>`) + directRow();
+    : `<div class="empty" style="padding:22px 18px"><b>هنوز سرور واسطی اضافه نشده</b>فعلا کاربران مستقیم به همین سرور وصل می‌شوند.</div>`) + directRow();
   const f = $("#relay-options");
   f.fallback_direct.checked = relayData.options.fallback_direct;
   f.balance.checked = relayData.options.balance;
@@ -210,7 +210,7 @@ $("#relay-form").addEventListener("submit", async (ev) => {
 $("#relay-list").addEventListener("click", async (ev) => {
   const b = ev.target.closest("button[data-r]");
   if (!b) return;
-  const id = +b.closest(".relay").dataset.id;
+  const id = +b.closest(".relay-row").dataset.id;
   const rs = relayData.relays;
   const idx = rs.findIndex((r) => r.id === id);
   const relay = rs[idx];
@@ -238,7 +238,7 @@ $("#relay-list").addEventListener("click", async (ev) => {
 $("#relay-list").addEventListener("change", async (ev) => {
   const t = ev.target.closest("[data-r=toggle]");
   if (!t) return;
-  const id = +t.closest(".relay").dataset.id;
+  const id = +t.closest(".relay-row").dataset.id;
   try {
     await api(`/api/relays/${id}`, { method: "PATCH", body: { enabled: t.checked } });
     toast(t.checked ? "سرور واسط فعال شد" : "سرور واسط غیرفعال شد");
@@ -280,7 +280,7 @@ $("#relay-options").addEventListener("submit", async (ev) => {
 
 document.addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-copy-from]");
-  if (b) copyText($(b.dataset.copyFrom).textContent, "دستور کپی شد");
+  if (b) copyText($(b.dataset.copyFrom).textContent, "دستور کپی شد", b);
 });
 
 loadRelays();

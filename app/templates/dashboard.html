@@ -1,119 +1,117 @@
 {% extends "base.html" %}
 {% set active = "dashboard" %}
 {% block title %}داشبورد · {{ cfg.PANEL_TITLE }}{% endblock %}
+{% block mobile_title %}داشبورد{% endblock %}
 
 {% block content %}
 {% from "_icons.html" import icon %}
 <div class="page-head">
   <div>
     <h1 class="page-title">سلام، {{ admin.username }}</h1>
-    <div class="page-sub">
-      <span id="today-date"></span>
-      <span class="live"><i></i>زنده</span>
-      <span class="muted" id="updated-at"></span>
+    <div class="page-sub"><span id="today-date"></span><span class="sep"></span><span id="updated-at">در حال بارگذاری…</span></div>
+  </div>
+  <div class="head-actions">
+    <button class="btn icon" id="refresh-btn" data-spin type="button" title="به‌روزرسانی" aria-label="به‌روزرسانی">{{ icon("refresh") }}</button>
+    <a class="btn primary hide-mobile" href="/users?new=1">{{ icon("plus") }} کاربر جدید</a>
+  </div>
+</div>
+
+<section class="kpis" aria-label="خلاصه">
+  <div class="card kpi">
+    <div class="kpi-head"><span class="stat-label">آنلاین همین الان</span></div>
+    <div class="stat-value" id="k-online"><span class="skel" style="width:48px;height:30px"></span></div>
+    <div class="kpi-foot">
+      <div class="split" id="k-split"></div>
+      <div class="legend-inline" id="k-split-legend"></div>
     </div>
   </div>
-  <div class="head-actions hide-mobile">
-    <a class="btn" href="/users">{{ icon("users") }} کاربران</a>
-    <a class="btn primary" href="/users?new=1">{{ icon("user-plus") }} کاربر جدید</a>
+  <div class="card kpi">
+    <div class="kpi-head"><span class="stat-label">مصرف امروز</span><span id="k-delta"></span></div>
+    <div class="stat-value" id="k-today"><span class="skel" style="width:96px;height:30px"></span></div>
+    <div class="kpi-foot kpi-foot-spark"><canvas id="spark" dir="ltr" aria-hidden="true"></canvas></div>
   </div>
-</div>
+  <div class="card kpi">
+    <div class="kpi-head"><span class="stat-label">کل ترافیک</span></div>
+    <div class="stat-value" id="k-total"><span class="skel" style="width:96px;height:30px"></span></div>
+    <div class="kpi-foot">
+      <div class="kpi-line"><span>میانگین روزانه</span><b id="k-avg"></b></div>
+      <div class="kpi-line"><span>۱۴ روز اخیر</span><b id="k-14"></b></div>
+    </div>
+  </div>
+  <div class="card kpi">
+    <div class="kpi-head"><span class="stat-label">کاربران</span><span id="k-ending"></span></div>
+    <div class="stat-value" id="k-users"><span class="skel" style="width:40px;height:30px"></span></div>
+    <div class="kpi-foot">
+      <div class="split" id="k-users-split"></div>
+      <div class="legend-inline" id="k-users-sub"></div>
+    </div>
+  </div>
+</section>
 
-<div class="grid cols-4">
-  <div class="card kpi green">
-    <div class="kpi-top"><div class="kpi-icon">{{ icon("wifi") }}</div><span id="k-online-protos" class="kpi-foot"></span></div>
-    <div class="kpi-value" id="k-online"><span class="skel" style="display:inline-block;width:60px;height:26px"></span></div>
-    <div class="kpi-label">آنلاین همین الان</div>
-  </div>
-  <div class="card kpi has-spark">
-    <div class="kpi-top"><div class="kpi-icon">{{ icon("activity") }}</div><span class="badge accent" id="k-today-delta"></span></div>
-    <div class="kpi-value" id="k-today"><span class="skel" style="display:inline-block;width:90px;height:26px"></span></div>
-    <div class="kpi-label">مصرف امروز</div>
-    <canvas class="kpi-spark" id="spark-today" dir="ltr"></canvas>
-  </div>
-  <div class="card kpi sky">
-    <div class="kpi-top"><div class="kpi-icon">{{ icon("database") }}</div></div>
-    <div class="kpi-value" id="k-total"><span class="skel" style="display:inline-block;width:90px;height:26px"></span></div>
-    <div class="kpi-label">کل ترافیک ثبت‌شده</div>
-    <div class="kpi-foot" id="k-avg"></div>
-  </div>
-  <div class="card kpi amber">
-    <div class="kpi-top"><div class="kpi-icon">{{ icon("users") }}</div></div>
-    <div class="kpi-value" id="k-users"><span class="skel" style="display:inline-block;width:40px;height:26px"></span></div>
-    <div class="kpi-label">کاربران</div>
-    <div class="kpi-foot" id="k-users-foot"></div>
-  </div>
-</div>
-
-<div class="grid dash-main mt">
-  <div class="card">
+<div class="dash-row mt">
+  <section class="card">
     <div class="card-head">
       <div>
-        <div class="card-title">{{ icon("trending") }} ترافیک ۱۴ روز اخیر</div>
+        <div class="card-title">ترافیک ۱۴ روز اخیر</div>
         <div class="card-sub" id="traffic-sub">&nbsp;</div>
       </div>
     </div>
-    <div class="chart-box"><canvas id="traffic-chart" dir="ltr"></canvas></div>
-  </div>
+    <div class="card-body"><div class="chart-box"><canvas id="traffic-chart" dir="ltr" aria-label="نمودار ترافیک روزانه"></canvas></div></div>
+  </section>
 
-  <div class="card">
+  <section class="card">
     <div class="card-head">
-      <div class="card-title">{{ icon("server") }} سلامت سرور</div>
-      <span class="badge outline" id="uptime-badge"></span>
+      <div class="card-title">سلامت سرور</div>
+      <span class="card-sub" id="uptime"></span>
     </div>
-    <div class="gauges">
-      <div><div id="g-cpu"></div><div class="g-label">پردازنده</div><div class="g-sub" id="g-cpu-sub"></div></div>
-      <div><div id="g-mem"></div><div class="g-label">حافظه</div><div class="g-sub" id="g-mem-sub"></div></div>
-      <div><div id="g-disk"></div><div class="g-label">دیسک</div><div class="g-sub" id="g-disk-sub"></div></div>
+    <div class="card-body">
+      <div class="gauges">
+        <div><div id="g-cpu"></div><div class="g-label">پردازنده</div><div class="g-sub" id="g-cpu-sub"></div></div>
+        <div><div id="g-mem"></div><div class="g-label">حافظه</div><div class="g-sub" id="g-mem-sub"></div></div>
+        <div><div id="g-disk"></div><div class="g-label">دیسک</div><div class="g-sub" id="g-disk-sub"></div></div>
+      </div>
     </div>
-    <div class="stat-rows">
-      <div class="stat-row"><span class="k">{{ icon("globe") }} آدرس سرور</span><span class="v mono" id="s-addr"></span></div>
-      <div class="stat-row"><span class="k">{{ icon("cpu") }} بار سیستم</span><span class="v" id="s-load"></span></div>
-    </div>
-  </div>
+    <div class="card-body" style="border-top:1px solid var(--line)" id="services"></div>
+  </section>
 </div>
 
 <div class="grid cols-3 mt">
-  <div class="card">
+  <section class="card">
     <div class="card-head">
-      <div class="card-title">{{ icon("wifi") }} متصل‌ها</div>
-      <span class="badge active" id="online-count-badge"><i></i>۰</span>
+      <div class="card-title">متصل‌ها</div>
+      <a class="link" href="/users?f=online">همه {{ icon("chevron-left") }}</a>
     </div>
-    <div class="list list-scroll" id="online-list"></div>
-  </div>
+    <div class="list-scroll" id="online-list"></div>
+  </section>
 
-  <div class="card">
-    <div class="card-head"><div class="card-title">{{ icon("pie") }} وضعیت کاربران</div></div>
-    <div class="donut-wrap">
-      <div style="position:relative; width:136px; height:136px; flex-shrink:0">
-        <canvas id="status-chart" dir="ltr"></canvas>
-        <div style="position:absolute; inset:0; display:grid; place-content:center; text-align:center; line-height:1.25; pointer-events:none">
-          <b id="donut-total" style="font-size:22px"></b><small class="muted">کاربر</small>
+  <section class="card">
+    <div class="card-head"><div class="card-title">وضعیت کاربران</div></div>
+    <div class="card-body donut-card">
+      <div class="donut-wrap">
+        <div class="donut">
+          <canvas id="status-chart" dir="ltr"></canvas>
+          <div class="center"><b id="donut-total"></b><small>کاربر</small></div>
         </div>
+        <div class="legend" id="status-legend"></div>
       </div>
-      <div class="legend" id="status-legend"></div>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <div class="card-head"><div class="card-title">{{ icon("activity") }} پرمصرف‌های امروز</div></div>
-    <div class="hbar" id="top-list"></div>
-  </div>
+  <section class="card">
+    <div class="card-head"><div class="card-title">پرمصرف‌های امروز</div></div>
+    <div id="top-list"></div>
+  </section>
 </div>
 
-<div class="grid cols-2 mt">
-  <div class="card">
-    <div class="card-head">
-      <div class="card-title">{{ icon("calendar") }} نیاز به تمدید</div>
-      <span class="card-sub">کمتر از ۳ روز یا بیش از ۸۵٪ حجم</span>
+<section class="card mt">
+  <div class="card-head">
+    <div>
+      <div class="card-title">نیاز به تمدید</div>
+      <div class="card-sub">کمتر از ۳ روز اعتبار یا بیش از ۸۵٪ حجم مصرف‌شده</div>
     </div>
-    <div class="list" id="ending-list"></div>
   </div>
-  <div class="card">
-    <div class="card-head"><div class="card-title">{{ icon("shield-check") }} سرویس‌های OpenVPN</div></div>
-    <div id="services"></div>
-  </div>
-</div>
+  <div id="ending-list"></div>
+</section>
 {% endblock %}
 
 {% block scripts %}

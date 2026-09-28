@@ -1,201 +1,235 @@
 {% extends "base.html" %}
 {% set active = "settings" %}
 {% block title %}تنظیمات · {{ cfg.PANEL_TITLE }}{% endblock %}
+{% block mobile_title %}تنظیمات{% endblock %}
 
 {% block content %}
 {% from "_icons.html" import icon %}
 <div class="page-head">
   <div>
-    <h1 class="page-title">تنظیمات</h1>
-    <div class="page-sub">آدرس سرور، امنیت، ظاهر و پشتیبان‌گیری</div>
+    <h1 class="page-title dup">تنظیمات</h1>
+    <div class="page-sub">آدرس سرور، سرور واسط، امنیت، پشتیبان‌گیری و ظاهر</div>
   </div>
 </div>
 
 <nav class="section-nav" id="section-nav" aria-label="بخش‌های تنظیمات">
-  <a href="#settings-form">{{ icon("globe") }} آدرس</a>
-  <a href="#relay-card">{{ icon("route") }} تانل ایران</a>
-  <a href="#password-form">{{ icon("key") }} امنیت</a>
-  <a href="#shared-card">{{ icon("lock") }} کانفیگ مشترک</a>
-  <a href="#backup-card">{{ icon("archive") }} پشتیبان</a>
-  <a href="#look-card">{{ icon("palette") }} ظاهر</a>
-  <a href="#tech-card">{{ icon("server") }} فنی</a>
+  <a href="#s-address">آدرس و برند</a>
+  <a href="#relay-card">سرور واسط ایران</a>
+  <a href="#s-security">امنیت</a>
+  <a href="#shared-card">کانفیگ مشترک</a>
+  <a href="#backup-card">پشتیبان</a>
+  <a href="#look-card">ظاهر</a>
+  <a href="#tech-card">اطلاعات فنی</a>
 </nav>
 
-<div class="grid cols-2">
+<section class="sset" id="s-address">
+  <div class="sset-info">
+    <h2>آدرس و برند</h2>
+    <p>آدرسی که داخل کانفیگ کاربران قرار می‌گیرد و نامی که در پنل و صفحه‌ی اشتراک دیده می‌شود.</p>
+  </div>
   <form class="card" id="settings-form" autocomplete="off">
-    <div class="card-head"><div class="card-title">{{ icon("globe") }} آدرس و برند</div></div>
-    <div class="field">
-      <label for="s-addr">آدرس سرور در کانفیگ کاربران</label>
-      <input id="s-addr" type="text" name="server_address" class="mono" dir="ltr" value="{{ server_address }}" required />
-      <div class="hint">IP یا دامنه‌ای که داخل فایل‌های .ovpn به‌عنوان <span class="mono">remote</span> قرار می‌گیرد. کاربران با دانلود دوباره از لینک اشتراک، آدرس جدید را می‌گیرند.</div>
-    </div>
-    <div class="field">
-      <label for="s-title">عنوان پنل</label>
-      <input id="s-title" type="text" name="panel_title" value="{{ panel_title }}" maxlength="40" required />
-    </div>
-    <div class="field">
-      <label for="s-base">آدرس پایه‌ی لینک‌های اشتراک <span class="muted">(اختیاری)</span></label>
-      <input id="s-base" type="text" name="subscription_base_url" class="mono" dir="ltr" value="{{ subscription_base_url }}" placeholder="https://panel.example.com" />
-      <div class="hint">اگر پنل پشت دامنه یا Nginx است، وارد کنید تا لینک‌ها با همان آدرس ساخته شوند.</div>
-    </div>
-    <button type="submit" class="btn primary">{{ icon("check") }} ذخیره</button>
-  </form>
-
-  <form class="card" id="password-form" autocomplete="off">
-    <div class="card-head"><div class="card-title">{{ icon("key") }} امنیت حساب</div></div>
-    <div class="field">
-      <label for="p-cur">رمز عبور فعلی</label>
-      <input id="p-cur" type="password" name="current_password" autocomplete="current-password" dir="ltr" required />
-    </div>
-    <div class="field">
-      <label for="p-new">رمز عبور جدید</label>
-      <div class="input-group">
-        <input id="p-new" type="password" name="new_password" autocomplete="new-password" dir="ltr" minlength="6" required />
-        <button class="btn ghost" type="button" id="p-show" title="نمایش">{{ icon("eye") }}</button>
+    <div class="card-body">
+      <div class="field">
+        <label for="s-addr">آدرس سرور</label>
+        <input id="s-addr" type="text" name="server_address" class="mono" dir="ltr" value="{{ server_address }}" required />
+        <div class="hint">IP یا دامنه‌ی همین سرور. کاربران با دانلود دوباره از لینک اشتراک، آدرس جدید را می‌گیرند.</div>
       </div>
-      <div class="bar" style="margin-top:10px"><span id="p-meter" style="width:0%"></span></div>
-      <div class="hint" id="p-hint">حداقل ۶ کاراکتر؛ ترکیب حروف بزرگ و کوچک، عدد و نماد امن‌تر است.</div>
-    </div>
-    <button type="submit" class="btn primary">{{ icon("shield-check") }} تغییر رمز</button>
-    <div class="divider"></div>
-    <div class="setting-row">
-      <div><div class="t">محافظت در برابر حدس رمز</div><div class="s">بعد از ۵ تلاش ناموفق، آن آی‌پی ۱۰ دقیقه مسدود می‌شود.</div></div>
-      <span class="badge active"><i></i>فعال</span>
-    </div>
-  </form>
-
-  <div class="card span-2 relay-card" id="relay-card">
-    <div class="card-head">
-      <div class="card-title">{{ icon("route") }} سرور واسط ایران (تانل)</div>
-      <div class="head-actions">
-        <button class="btn sm" id="relay-check" type="button" title="بررسی اتصال همه‌ی سرورها">{{ icon("activity") }} بررسی اتصال</button>
-        <button class="btn sm primary" id="relay-add" type="button">{{ icon("plus") }} افزودن سرور</button>
+      <div class="field">
+        <label for="s-title">عنوان پنل</label>
+        <input id="s-title" type="text" name="panel_title" value="{{ panel_title }}" maxlength="40" required />
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label for="s-base">آدرس پایه‌ی لینک‌های اشتراک <span class="muted">(اختیاری)</span></label>
+        <input id="s-base" type="text" name="subscription_base_url" class="mono" dir="ltr" value="{{ subscription_base_url }}" placeholder="https://panel.example.com" />
+        <div class="hint">اگر پنل پشت دامنه یا Nginx است، وارد کنید تا لینک‌ها با همان آدرس ساخته شوند.</div>
       </div>
     </div>
+    <div class="card-foot end"><button type="submit" class="btn primary">ذخیره</button></div>
+  </form>
+</section>
+
+<section class="sset" id="relay-card">
+  <div class="sset-info">
+    <h2>سرور واسط ایران (تانل)</h2>
+    <p>کاربران به یک سرور داخل ایران وصل می‌شوند و آن سرور ترافیک را به این سرور می‌رساند؛ در اختلال‌ها و «اینترنت ملی» پایداری خیلی بالاتر می‌رود.</p>
+    <p>کانفیگ‌ها سرورها را به ترتیب همین لیست امتحان می‌کنند و اگر سروری جواب نداد، چند ثانیه بعد سراغ بعدی می‌روند.</p>
+  </div>
+  <div class="card">
     <div class="relay-flow" aria-hidden="true">
-      <div class="node">{{ icon("phone") }}<b>کاربران</b><small>داخل ایران</small></div>
+      <div class="node">{{ icon("phone") }}<b>کاربران</b></div>
       <div class="wire"><i></i></div>
-      <div class="node hot">{{ icon("flag") }}<b>سرور ایران</b><small>واسط</small></div>
+      <div class="node hot">{{ icon("flag") }}<b>سرور ایران</b></div>
       <div class="wire"><i></i></div>
-      <div class="node">{{ icon("server") }}<b>این سرور</b><small>OpenVPN</small></div>
+      <div class="node">{{ icon("server") }}<b>این سرور</b></div>
     </div>
-    <p class="dim relay-intro">
-      کاربران به سرور داخل ایران وصل می‌شوند و آن سرور ترافیک را به این سرور می‌رساند؛ در اختلال‌ها و «اینترنت ملی» پایداری خیلی بالاتر می‌رود.
-      کانفیگ‌ها به ترتیب همین لیست امتحان می‌شوند و اگر سروری جواب نداد، خودکار سراغ بعدی می‌روند.
-    </p>
-    <div class="relay-list" id="relay-list"><div class="skel" style="height:64px;border-radius:14px"></div></div>
-    <details class="more relay-adv">
-      <summary>{{ icon("settings") }} تنظیمات پیشرفته {{ icon("chevron-down", "chev") }}</summary>
+    <div class="card-head" style="border-top:1px solid var(--line)">
+      <div class="card-title">سرورها</div>
+      <div class="head-actions">
+        <button class="btn sm" id="relay-check" type="button">{{ icon("activity") }} بررسی اتصال</button>
+        <button class="btn sm primary" id="relay-add" type="button">{{ icon("plus") }} افزودن</button>
+      </div>
+    </div>
+    <div id="relay-list"><div class="card-body"><span class="skel" style="height:44px"></span></div></div>
+    <details class="fold">
+      <summary>تنظیمات پیشرفته {{ icon("chevron-down") }}</summary>
       <form class="body" id="relay-options" autocomplete="off">
         <div class="setting-row">
-          <div><div class="t">اتصال مستقیم به‌عنوان پشتیبان</div><div class="s">اگر هیچ سرور واسطی جواب نداد، کانفیگ مستقیم به همین سرور وصل شود.</div></div>
+          <div><div class="t">اتصال مستقیم به‌عنوان پشتیبان</div><div class="s">اگر هیچ سرور واسطی جواب نداد، مستقیم به همین سرور وصل شود.</div></div>
           <label class="switch"><input type="checkbox" name="fallback_direct" /><span></span></label>
         </div>
         <div class="setting-row">
-          <div><div class="t">پخش کاربران بین سرورهای واسط</div><div class="s">هر کاربر سرورها را با ترتیب مخصوص خودش امتحان می‌کند تا بار بین همه تقسیم شود.</div></div>
+          <div><div class="t">پخش کاربران بین سرورهای واسط</div><div class="s">هر کاربر سرورها را با ترتیب مخصوص خودش امتحان می‌کند تا بار تقسیم شود.</div></div>
           <label class="switch"><input type="checkbox" name="balance" /><span></span></label>
         </div>
         <div class="setting-row">
           <div><div class="t">زمان انتظار برای هر سرور</div><div class="s">چند ثانیه صبر کند تا سراغ سرور بعدی برود (۳ تا ۶۰).</div></div>
-          <input type="number" name="timeout" min="3" max="60" step="1" style="width:96px" />
+          <input type="number" name="timeout" min="3" max="60" step="1" style="width:88px" aria-label="ثانیه" />
         </div>
-        <button class="btn primary" type="submit">{{ icon("check") }} ذخیره</button>
-        <div class="hint" style="margin-top:10px">تغییرات روی کانفیگ‌هایی اعمال می‌شود که از این به بعد دانلود شوند؛ کاربران فعلی کافی است کانفیگ را دوباره از لینک اشتراک بگیرند.</div>
+        <div class="row" style="margin-top:16px; justify-content:space-between; flex-wrap:wrap">
+          <span class="hint" style="margin:0">روی کانفیگ‌هایی که از این به بعد دانلود شوند اثر دارد.</span>
+          <button class="btn primary sm" type="submit">ذخیره</button>
+        </div>
       </form>
     </details>
   </div>
+</section>
 
-  <div class="card" id="shared-card">
-    <div class="card-head"><div class="card-title">{{ icon("lock") }} کانفیگ مشترک «فقط رمز»</div></div>
-    <p class="dim" style="font-size:13px; line-height:1.9; margin:0 0 16px">
-      یک فایل بدون گواهی برای همه‌ی کاربرانی که روش ورودشان «فقط رمز» است؛ هر کس با نام کاربری و رمز خودش وارد می‌شود.
-      مثلا در کانال یا ربات منتشرش کنید و فقط مشخصات ورود را جدا بفرستید.
-    </p>
-    <div class="row">
-      <a class="btn primary grow" href="/api/settings/shared-config/udp">{{ icon("download") }} UDP</a>
-      <a class="btn grow" href="/api/settings/shared-config/tcp">{{ icon("download") }} TCP</a>
-    </div>
-    <div class="hint" style="margin-top:12px">
-      {% if pass_users %}<span class="num">{{ pass_users }}</span> کاربر با این روش وارد می‌شوند.
-      {% else %}هنوز کاربری با روش «فقط رمز» ندارید؛ هنگام ساخت کاربر یا از جزئیات کاربر انتخابش کنید.{% endif %}
-      بدون مشخصات ورود معتبر، این فایل به‌تنهایی به هیچ حسابی دسترسی نمی‌دهد.
-    </div>
+<section class="sset" id="s-security">
+  <div class="sset-info">
+    <h2>امنیت حساب</h2>
+    <p>رمز ورود مدیر. بعد از ۵ تلاش ناموفق، آی‌پی تلاش‌کننده ۱۰ دقیقه مسدود می‌شود.</p>
   </div>
-  <div class="card" id="backup-card">
-    <div class="card-head"><div class="card-title">{{ icon("archive") }} پشتیبان‌گیری</div></div>
-    <p class="dim" style="font-size:13px; line-height:1.9; margin:0 0 16px">
-      یک فایل کامل شامل پایگاه‌داده، تنظیمات و <b>زیرساخت گواهی (CA)</b>. بدون CA، اگر سرور از دست برود همه‌ی کانفیگ‌های کاربران بی‌اعتبار می‌شوند؛ این فایل را بیرون از سرور نگه دارید.
-    </p>
-    <a class="btn primary" href="/api/settings/backup">{{ icon("download") }} دانلود فایل پشتیبان</a>
-    <div class="hint" style="margin-top:12px">بازگردانی روی سرور جدید (بعد از نصب پنل): <span class="mono">waze-panel restore &lt;file&gt;</span></div>
-  </div>
+  <form class="card" id="password-form" autocomplete="off">
+    <div class="card-body">
+      <div class="field">
+        <label for="p-cur">رمز فعلی</label>
+        <input id="p-cur" type="password" name="current_password" autocomplete="current-password" dir="ltr" required />
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label for="p-new">رمز جدید</label>
+        <div class="input-group">
+          <input id="p-new" type="password" name="new_password" autocomplete="new-password" dir="ltr" minlength="6" required />
+          <button class="btn" type="button" id="p-show" title="نمایش">{{ icon("eye") }}</button>
+        </div>
+        <div class="bar thin" style="margin-top:10px"><span id="p-meter" style="width:0%"></span></div>
+        <div class="hint" id="p-hint">حداقل ۶ کاراکتر؛ ترکیب حروف بزرگ و کوچک، عدد و نماد امن‌تر است.</div>
+      </div>
+    </div>
+    <div class="card-foot end"><button type="submit" class="btn primary">تغییر رمز</button></div>
+  </form>
+</section>
 
-  <div class="card span-2" id="look-card">
-    <div class="card-head"><div class="card-title">{{ icon("palette") }} ظاهر</div></div>
-    <div class="setting-row">
-      <div><div class="t">تم پنل</div><div class="s">روی همین مرورگر ذخیره می‌شود.</div></div>
-      <div class="seg" id="theme-seg">
-        <button data-theme-set="dark">{{ icon("moon") }} تاریک</button>
-        <button data-theme-set="light">{{ icon("sun") }} روشن</button>
-        <button data-theme-set="auto">خودکار</button>
+<section class="sset" id="shared-card">
+  <div class="sset-info">
+    <h2>کانفیگ مشترک «فقط رمز»</h2>
+    <p>یک فایل بدون گواهی برای همه‌ی کاربرانی که فقط با نام کاربری و رمز وارد می‌شوند. می‌توانید در کانال یا ربات منتشرش کنید و فقط مشخصات ورود را جدا بفرستید.</p>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="row" style="gap:8px">
+        <a class="btn" href="/api/settings/shared-config/udp">{{ icon("download") }} کانفیگ UDP</a>
+        <a class="btn" href="/api/settings/shared-config/tcp">{{ icon("download") }} کانفیگ TCP</a>
+      </div>
+      <div class="hint" style="margin-top:12px">
+        {% if pass_users %}<span class="num">{{ pass_users }}</span> کاربر با این روش وارد می‌شوند.
+        {% else %}هنوز کاربری با روش «فقط رمز» ندارید؛ هنگام ساخت کاربر یا از جزئیات کاربر انتخابش کنید.{% endif %}
+        این فایل بدون نام کاربری و رمز معتبر به هیچ حسابی دسترسی نمی‌دهد.
       </div>
     </div>
   </div>
+</section>
 
-  <div class="card span-2" id="tech-card">
-    <div class="card-head"><div class="card-title">{{ icon("server") }} اطلاعات فنی</div></div>
-    <div class="kv" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr))">
-      <div><div class="k">پورت پنل وب</div><div class="v num">{{ panel_port }}</div></div>
-      <div><div class="k">OpenVPN UDP</div><div class="v num">{{ udp_port }}</div></div>
-      <div><div class="k">OpenVPN TCP</div><div class="v num">{{ tcp_port }}</div></div>
-      <div><div class="k">رمزنگاری</div><div class="v mono">AES-256-GCM · tls-crypt</div></div>
-    </div>
-    <div class="divider"></div>
-    <div class="section-title">{{ icon("cpu") }} مدیریت از ترمینال سرور</div>
-    <div class="kv" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr))">
-      <div><div class="k">منوی مدیریت</div><div class="v mono">waze-panel</div></div>
-      <div><div class="k">وضعیت سرویس‌ها</div><div class="v mono">waze-panel status</div></div>
-      <div><div class="k">به‌روزرسانی</div><div class="v mono">waze-panel update</div></div>
-      <div><div class="k">بازیابی رمز ادمین</div><div class="v mono">waze-panel reset-password</div></div>
+<section class="sset" id="backup-card">
+  <div class="sset-info">
+    <h2>پشتیبان‌گیری</h2>
+    <p>پایگاه‌داده، تنظیمات و زیرساخت گواهی (CA) در یک فایل. بدون CA، اگر سرور از دست برود همه‌ی کانفیگ‌ها بی‌اعتبار می‌شوند؛ این فایل را بیرون از سرور نگه دارید.</p>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <a class="btn primary" href="/api/settings/backup">{{ icon("download") }} دانلود فایل پشتیبان</a>
+      <div class="hint" style="margin-top:12px">بازگردانی روی سرور جدید، بعد از نصب پنل: <code>waze-panel restore &lt;file&gt;</code></div>
     </div>
   </div>
-</div>
+</section>
+
+<section class="sset" id="look-card">
+  <div class="sset-info">
+    <h2>ظاهر</h2>
+    <p>تم روی همین مرورگر ذخیره می‌شود.</p>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="seg" id="theme-seg">
+        <button data-theme-set="dark" type="button">{{ icon("moon") }} تاریک</button>
+        <button data-theme-set="light" type="button">{{ icon("sun") }} روشن</button>
+        <button data-theme-set="auto" type="button">مطابق سیستم</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sset" id="tech-card">
+  <div class="sset-info">
+    <h2>اطلاعات فنی</h2>
+    <p>پورت‌ها و دستورهای مدیریت روی خود سرور.</p>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="kv-list">
+        <div><span class="k">پورت پنل</span><span class="v num">{{ panel_port }}</span></div>
+        <div><span class="k">OpenVPN UDP</span><span class="v num">{{ udp_port }}</span></div>
+        <div><span class="k">OpenVPN TCP</span><span class="v num">{{ tcp_port }}</span></div>
+        <div><span class="k">رمزنگاری</span><span class="v ltr">AES-256-GCM · tls-crypt</span></div>
+      </div>
+    </div>
+    <div class="card-body" style="border-top:1px solid var(--line)">
+      <div class="kv-list">
+        <div><span class="k">منوی مدیریت</span><code>waze-panel</code></div>
+        <div><span class="k">وضعیت سرویس‌ها</span><code>waze-panel status</code></div>
+        <div><span class="k">به‌روزرسانی</span><code>waze-panel update</code></div>
+        <div><span class="k">بازیابی رمز مدیر</span><code>waze-panel reset-password</code></div>
+      </div>
+    </div>
+  </div>
+</section>
 {% endblock %}
 
 {% block overlays %}
 {% from "_icons.html" import icon %}
-<div class="modal" id="relay-modal" role="dialog" aria-modal="true">
+<div class="modal" id="relay-modal" role="dialog" aria-modal="true" aria-labelledby="relay-modal-title">
   <div id="relay-form-view">
     <div class="modal-head">
       <div>
         <h3 id="relay-modal-title">سرور واسط جدید</h3>
-        <p>سروری داخل ایران که کاربران به آن وصل می‌شوند و ترافیک را به این سرور می‌رساند.</p>
+        <p>سروری داخل ایران که کاربران به آن وصل می‌شوند.</p>
       </div>
-      <button class="btn icon sm ghost" data-close title="بستن">{{ icon("x") }}</button>
+      <button class="btn icon sm ghost" data-close type="button" title="بستن">{{ icon("x") }}</button>
     </div>
     <form id="relay-form" autocomplete="off">
-      <div class="field">
-        <label for="r-name">نام</label>
-        <input id="r-name" name="name" type="text" maxlength="40" placeholder="مثلا: تهران - آسیاتک" required />
-      </div>
-      <div class="field">
-        <label for="r-address">آی‌پی یا دامنه‌ی سرور ایران</label>
-        <input id="r-address" name="address" type="text" dir="ltr" class="mono" placeholder="185.x.x.x" required />
-      </div>
-      <div class="field-row">
+      <div class="modal-body">
         <div class="field">
-          <label for="r-udp">پورت UDP روی سرور ایران</label>
-          <input id="r-udp" name="udp_port" type="number" min="1" max="65535" placeholder="{{ udp_port }}" />
+          <label for="r-name">نام</label>
+          <input id="r-name" name="name" type="text" maxlength="40" placeholder="مثلا: تهران، آسیاتک" required />
         </div>
         <div class="field">
-          <label for="r-tcp">پورت TCP روی سرور ایران</label>
-          <input id="r-tcp" name="tcp_port" type="number" min="1" max="65535" placeholder="{{ tcp_port }}" />
+          <label for="r-address">آی‌پی یا دامنه‌ی سرور ایران</label>
+          <input id="r-address" name="address" type="text" dir="ltr" class="mono" placeholder="185.x.x.x" required />
         </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="r-udp">پورت UDP روی سرور ایران</label>
+            <input id="r-udp" name="udp_port" type="number" min="1" max="65535" placeholder="{{ udp_port }}" />
+          </div>
+          <div class="field">
+            <label for="r-tcp">پورت TCP روی سرور ایران</label>
+            <input id="r-tcp" name="tcp_port" type="number" min="1" max="65535" placeholder="{{ tcp_port }}" />
+          </div>
+        </div>
+        <div class="hint" style="margin-top:-8px">خالی بگذارید تا همان پورت‌های این سرور استفاده شود. کاربران این پورت‌ها را نمی‌بینند.</div>
       </div>
-      <div class="hint" style="margin:-6px 0 4px">خالی = همان پورت‌های این سرور. کاربران هیچ‌کدام از این پورت‌ها را در صفحه‌ی اشتراک نمی‌بینند.</div>
       <div class="modal-foot">
-        <button type="submit" class="btn primary" id="relay-save">{{ icon("check") }} ذخیره</button>
-        <button type="button" class="btn ghost" data-close>انصراف</button>
+        <button type="button" class="btn" data-close>انصراف</button>
+        <button type="submit" class="btn primary" id="relay-save">ذخیره</button>
       </div>
     </form>
   </div>
@@ -206,24 +240,26 @@
         <h3>راه‌اندازی <span id="rs-name"></span></h3>
         <p>این دستور را روی <b>سرور ایران</b> با کاربر root اجرا کنید:</p>
       </div>
-      <button class="btn icon sm ghost" data-close title="بستن">{{ icon("x") }}</button>
+      <button class="btn icon sm ghost" data-close type="button" title="بستن">{{ icon("x") }}</button>
     </div>
-    <div class="code-box"><code id="rs-cmd" dir="ltr"></code><button class="btn icon sm ghost" type="button" data-copy-from="#rs-cmd" title="کپی">{{ icon("copy") }}</button></div>
-    <details class="more" style="margin-top:10px">
-      <summary>{{ icon("download") }} اگر سرور ایران به گیت‌هاب دسترسی ندارد {{ icon("chevron-down", "chev") }}</summary>
-      <div class="body">
-        <p class="dim" style="font-size:12.5px;margin:0 0 10px">همین اسکریپت را مستقیم از خود پنل بگیرید:</p>
-        <div class="code-box"><code id="rs-cmd-alt" dir="ltr"></code><button class="btn icon sm ghost" type="button" data-copy-from="#rs-cmd-alt" title="کپی">{{ icon("copy") }}</button></div>
-      </div>
-    </details>
-    <ol class="steps">
-      <li>با SSH وارد سرور ایران شوید و دستور بالا را بزنید؛ فوروارد UDP و TCP ساخته می‌شود و بعد از ریبوت هم خودکار برقرار است.</li>
-      <li>اینجا «بررسی اتصال» را بزنید تا کل مسیر تست شود.</li>
-      <li>کاربران کانفیگ را دوباره از لینک اشتراک دانلود کنند تا سرور جدید در آن باشد.</li>
-    </ol>
-    <div class="hint" style="margin-top:12px">روی سرور ایران: <span class="mono">waze-relay status</span> · <span class="mono">waze-relay test</span> · <span class="mono">waze-relay uninstall</span></div>
+    <div class="modal-body">
+      <div class="code-box"><code id="rs-cmd" dir="ltr"></code><button class="btn icon sm" type="button" data-copy-from="#rs-cmd" title="کپی">{{ icon("copy") }}</button></div>
+      <details class="fold bare" style="margin-top:12px">
+        <summary>سرور ایران به گیت‌هاب دسترسی ندارد؟ {{ icon("chevron-down") }}</summary>
+        <div class="body">
+          <p class="hint" style="margin:0 0 8px">همین اسکریپت را مستقیم از خود پنل بگیرید:</p>
+          <div class="code-box"><code id="rs-cmd-alt" dir="ltr"></code><button class="btn icon sm" type="button" data-copy-from="#rs-cmd-alt" title="کپی">{{ icon("copy") }}</button></div>
+        </div>
+      </details>
+      <ol class="steps" style="margin-top:18px">
+        <li>با SSH وارد سرور ایران شوید و دستور بالا را بزنید. فوروارد UDP و TCP ساخته می‌شود و بعد از ریبوت هم برقرار می‌ماند.</li>
+        <li>اینجا «بررسی اتصال» را بزنید تا کل مسیر تست شود.</li>
+        <li>کاربران کانفیگ را دوباره از لینک اشتراک دانلود کنند.</li>
+      </ol>
+      <div class="hint" style="margin-top:14px">روی سرور ایران: <code>waze-relay status</code> · <code>waze-relay test</code> · <code>waze-relay uninstall</code></div>
+    </div>
     <div class="modal-foot">
-      <button type="button" class="btn primary" data-close>{{ icon("check") }} متوجه شدم</button>
+      <button type="button" class="btn primary" data-close>متوجه شدم</button>
     </div>
   </div>
 </div>

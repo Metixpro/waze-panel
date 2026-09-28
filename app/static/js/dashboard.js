@@ -1,31 +1,73 @@
-// Dashboard: live stats, charts and quick renewals.
+// Dashboard: live numbers, traffic, server health and what needs attention.
 "use strict";
 
 let stats = null;
 let users = [];
 const charts = {};
 
-const STATUS_COLORS = () => ({
-  active: cssVar("--green"),
-  over_quota: cssVar("--amber"),
-  expired: "#f97316",
-  disabled: cssVar("--slate"),
-  revoked: cssVar("--rose"),
-});
+const STATUS_ORDER = ["active", "over_quota", "expired", "disabled", "revoked"];
+const statusColor = (k) => ({
+  active: cssVar("--green"), over_quota: cssVar("--amber"), expired: "#e0823d", disabled: cssVar("--gray"), revoked: cssVar("--red"),
+})[k];
 
-function destroyCharts() {
-  Object.values(charts).forEach((c) => c && c.destroy());
-  Object.keys(charts).forEach((k) => delete charts[k]);
+function big(bytesN) {
+  const p = bytesParts(bytesN);
+  return `<bdi class="num">${p.value}<span class="unit">${p.unit}</span></bdi>`;
 }
 
-function gradientFill(ctx, area, alpha) {
+// Soft fill under a line in the brand blue.
+function areaFill(ctx, area, alpha) {
   const g = ctx.createLinearGradient(0, area.top, 0, area.bottom);
-  g.addColorStop(0, `rgba(124,92,255,${alpha})`);
-  g.addColorStop(1, "rgba(124,92,255,0)");
+  g.addColorStop(0, `rgba(79, 124, 255, ${alpha})`);
+  g.addColorStop(1, "rgba(79, 124, 255, 0)");
   return g;
 }
 
-function renderTrafficChart() {
+function renderKpis() {
+  const s = stats;
+  const udp = s.online_sessions.filter((x) => x.proto === "udp").length;
+  const tcp = s.online_sessions.length - udp;
+  const n = udp + tcp;
+  $("#k-online").textContent = fa(s.online_count);
+  $("#k-split").innerHTML = n
+    ? `<i style="width:${(udp / n) * 100}%;background:var(--accent-fill)"></i><i style="width:${(tcp / n) * 100}%;background:var(--teal)"></i>`
+    : "";
+  $("#k-split-legend").innerHTML = `<span><i style="background:var(--accent-fill)"></i>UDP ${fa(udp)}</span><span><i style="background:var(--teal)"></i>TCP ${fa(tcp)}</span>`;
+
+  $("#k-today").innerHTML = big(s.today_bytes);
+  const vals = s.chart_values;
+  const yesterday = vals[vals.length - 2] || 0;
+  if (yesterday) {
+    const d = Math.round(((s.today_bytes - yesterday) / yesterday) * 100);
+    $("#k-delta").innerHTML = `<span class="delta ${d < 0 ? "neg" : ""}" title="نسبت به دیروز">${d >= 0 ? "▲" : "▼"} ${fa(Math.abs(d))}٪</span>`;
+  } else {
+    $("#k-delta").innerHTML = "";
+  }
+
+  const sum14 = vals.reduce((a, b) => a + b, 0);
+  $("#k-total").innerHTML = big(s.total_bytes);
+  $("#k-avg").innerHTML = bytesHtml(sum14 / (vals.length || 1));
+  $("#k-14").innerHTML = bytesHtml(sum14);
+
+  const c = s.status_counts;
+  const total = s.total_users || 0;
+  $("#k-users").textContent = fa(total);
+  $("#k-users-split").innerHTML = total
+    ? STATUS_ORDER.filter((k) => c[k]).map((k) => `<i style="width:${(c[k] / total) * 100}%;background:${statusColor(k)}" title="${STATUS[k].label}: ${fa(c[k])}"></i>`).join("")
+    : "";
+  const inactive = (c.expired || 0) + (c.over_quota || 0) + (c.disabled || 0) + (c.revoked || 0);
+  $("#k-users-sub").innerHTML =
+    `<span><i style="background:var(--green)"></i>${fa(c.active || 0)} فعال</span>` +
+    (inactive ? `<span><i style="background:var(--amber)"></i>${fa(inactive)} غیرفعال یا تمام‌شده</span>` : "");
+  $("#k-ending").innerHTML = s.ending_soon ? `<span class="delta warn" title="کمتر از ۳ روز یا بیش از ۸۵٪ حجم">${fa(s.ending_soon)} رو به اتمام</span>` : "";
+
+  const peak = Math.max(...vals);
+  $("#traffic-sub").innerHTML = peak
+    ? `مجموع ${bytesHtml(sum14)} · بیشترین ${bytesHtml(peak)} در ${jShort(s.chart_dates[vals.indexOf(peak)])}`
+    : "هنوز ترافیکی ثبت نشده";
+}
+
+function renderTraffic() {
   const labels = stats.chart_dates.map(jShort);
   const data = stats.chart_values;
   if (charts.traffic) {
@@ -34,50 +76,34 @@ function renderTrafficChart() {
     charts.traffic.update("none");
     return;
   }
+  const line = cssVar("--accent-fill");
   charts.traffic = new Chart($("#traffic-chart"), {
     type: "line",
     data: {
       labels,
       datasets: [{
-        data,
-        borderColor: "#7c5cff",
-        borderWidth: 2.5,
-        tension: 0.38,
-        fill: true,
-        pointRadius: 0,
-        pointHoverRadius: 5,
-        pointHoverBackgroundColor: "#7c5cff",
-        pointHoverBorderColor: "#fff",
-        pointHoverBorderWidth: 2,
-        backgroundColor: (c) => (c.chart.chartArea ? gradientFill(c.chart.ctx, c.chart.chartArea, 0.35) : "transparent"),
+        data, borderColor: line, borderWidth: 2.25, tension: 0.35, fill: true,
+        pointRadius: (c) => (c.dataIndex === data.length - 1 ? 4 : 0),
+        pointBackgroundColor: line, pointBorderColor: cssVar("--surface"), pointBorderWidth: 2,
+        pointHoverRadius: 5, pointHoverBackgroundColor: line, pointHoverBorderColor: cssVar("--surface"), pointHoverBorderWidth: 2,
+        backgroundColor: (c) => (c.chart.chartArea ? areaFill(c.chart.ctx, c.chart.chartArea, 0.28) : "transparent"),
       }],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: { duration: 650 },
+      responsive: true, maintainAspectRatio: false, animation: { duration: 500 },
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: { display: false },
         tooltip: {
-          rtl: true,
-          textDirection: "rtl",
-          displayColors: false,
-          padding: 10,
           callbacks: {
             title: (items) => jDate(stats.chart_dates[items[0].dataIndex] + "T12:00:00", { weekday: "long", month: "long", day: "numeric" }),
-            label: (item) => `ترافیک: ${bytesTxt(item.raw)}`,
+            label: (item) => bytesTxt(item.raw),
           },
         },
       },
       scales: {
-        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
-        y: {
-          beginAtZero: true,
-          grid: { color: cssVar("--border") },
-          border: { display: false },
-          ticks: { maxTicksLimit: 5, callback: (v) => bytesTxt(v) },
-        },
+        x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+        y: { beginAtZero: true, border: { display: false }, grid: { color: cssVar("--line") }, ticks: { maxTicksLimit: 5, callback: (v) => bytesTxt(v) } },
       },
     },
   });
@@ -90,32 +116,30 @@ function renderSpark() {
     charts.spark.update("none");
     return;
   }
-  charts.spark = new Chart($("#spark-today"), {
+  charts.spark = new Chart($("#spark"), {
     type: "line",
-    data: { labels: data.map((_, i) => i), datasets: [{ data, borderColor: "#7c5cff", borderWidth: 2, tension: 0.4, pointRadius: 0, fill: true,
-      backgroundColor: (c) => (c.chart.chartArea ? gradientFill(c.chart.ctx, c.chart.chartArea, 0.25) : "transparent") }] },
+    data: { labels: data.map((_, i) => i), datasets: [{ data, borderColor: cssVar("--accent-fill"), borderWidth: 2, tension: 0.4, pointRadius: 0, fill: true,
+      backgroundColor: (c) => (c.chart.chartArea ? areaFill(c.chart.ctx, c.chart.chartArea, 0.22) : "transparent") }] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
       plugins: { legend: { display: false }, tooltip: { enabled: false } },
       scales: { x: { display: false }, y: { display: false, beginAtZero: true } },
-      layout: { padding: 0 },
+      layout: { padding: { top: 4 } },
     },
   });
 }
 
 function renderStatus() {
-  const order = ["active", "over_quota", "expired", "disabled", "revoked"];
-  const colors = STATUS_COLORS();
   const counts = stats.status_counts;
-  const values = order.map((k) => counts[k] || 0);
+  const values = STATUS_ORDER.map((k) => counts[k] || 0);
   const total = values.reduce((a, b) => a + b, 0);
   $("#donut-total").textContent = fa(total);
-  $("#status-legend").innerHTML = order
+  $("#status-legend").innerHTML = STATUS_ORDER
     .filter((k) => counts[k] || k === "active")
-    .map((k) => `<div class="legend-row"><i style="background:${colors[k]}"></i>${STATUS[k].label}<b>${fa(counts[k] || 0)}</b></div>`)
+    .map((k) => `<div class="legend-row"><i style="background:${statusColor(k)}"></i><span class="lbl">${STATUS[k].label}</span><b>${fa(counts[k] || 0)}</b><small>${total ? fa(Math.round(((counts[k] || 0) / total) * 100)) + "٪" : ""}</small></div>`)
     .join("");
   const data = total ? values : [1];
-  const bg = total ? order.map((k) => colors[k]) : [cssVar("--surface-3")];
+  const bg = total ? STATUS_ORDER.map(statusColor) : [cssVar("--surface-3")];
   if (charts.status) {
     charts.status.data.datasets[0].data = data;
     charts.status.data.datasets[0].backgroundColor = bg;
@@ -124,138 +148,113 @@ function renderStatus() {
   }
   charts.status = new Chart($("#status-chart"), {
     type: "doughnut",
-    data: { labels: order.map((k) => STATUS[k].label), datasets: [{ data, backgroundColor: bg, borderWidth: 0, spacing: total ? 2 : 0, borderRadius: 4 }] },
+    data: { labels: STATUS_ORDER.map((k) => STATUS[k].label), datasets: [{ data, backgroundColor: bg, borderWidth: 0, spacing: total ? 2 : 0, borderRadius: 3 }] },
     options: {
-      responsive: true, maintainAspectRatio: false, cutout: "74%",
-      plugins: { legend: { display: false }, tooltip: { enabled: !!total, rtl: true, textDirection: "rtl",
-        callbacks: { label: (i) => ` ${i.label}: ${fa(i.raw)}` } } },
+      responsive: true, maintainAspectRatio: false, cutout: "76%",
+      plugins: { legend: { display: false }, tooltip: { enabled: !!total, callbacks: { label: (i) => ` ${i.label}: ${fa(i.raw)}` } } },
     },
   });
 }
 
-function renderKpis() {
-  const s = stats;
-  $("#k-online").textContent = fa(s.online_count);
-  const udp = s.online_sessions.filter((x) => x.proto === "udp").length;
-  const tcp = s.online_sessions.length - udp;
-  $("#k-online-protos").innerHTML = `<span class="badge outline">UDP ${fa(udp)}</span><span class="badge outline">TCP ${fa(tcp)}</span>`;
-
-  const today = bytesParts(s.today_bytes);
-  $("#k-today").innerHTML = `<bdi class="num">${today.value}<span class="unit">${today.unit}</span></bdi>`;
-  const vals = s.chart_values;
-  const yesterday = vals[vals.length - 2] || 0;
-  const delta = document.getElementById("k-today-delta");
-  if (yesterday) {
-    const d = Math.round(((s.today_bytes - yesterday) / yesterday) * 100);
-    delta.textContent = `${d >= 0 ? "+" : ""}${fa(d)}٪ نسبت به دیروز`;
-    delta.className = `badge ${d >= 0 ? "accent" : "outline"}`;
-  } else {
-    delta.textContent = "";
-  }
-
-  const total = bytesParts(s.total_bytes);
-  $("#k-total").innerHTML = `<bdi class="num">${total.value}<span class="unit">${total.unit}</span></bdi>`;
-  const avg = vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
-  $("#k-avg").innerHTML = `میانگین روزانه ${bytesHtml(avg)}`;
-
-  $("#k-users").textContent = fa(s.total_users);
-  $("#k-users-foot").innerHTML =
-    `<span class="badge active"><i></i>${fa(s.status_counts.active)} فعال</span>` +
-    (s.ending_soon ? `<span class="badge warn"><i></i>${fa(s.ending_soon)} رو به اتمام</span>` : "");
-
-  const sum = vals.reduce((a, b) => a + b, 0);
-  const peakIdx = vals.indexOf(Math.max(...vals));
-  $("#traffic-sub").innerHTML = `مجموع ${bytesHtml(sum)} · اوج ${bytesHtml(vals[peakIdx] || 0)} در ${jShort(s.chart_dates[peakIdx])}`;
-}
-
 function renderHealth() {
   const sys = stats.system;
-  $("#g-cpu").innerHTML = ring(sys.cpu_percent, { size: 78, stroke: 8, color: levelColor(sys.cpu_percent), label: `<b>${fa(Math.round(sys.cpu_percent))}٪</b>` });
+  const gauge = (p) => ring(p, { size: 84, stroke: 8, color: levelColor(p), label: `<b>${fa(Math.round(p))}٪</b>` });
+  $("#g-cpu").innerHTML = gauge(sys.cpu_percent);
   $("#g-cpu-sub").textContent = `${fa(sys.cpu_count)} هسته`;
-  $("#g-mem").innerHTML = ring(sys.mem_percent, { size: 78, stroke: 8, color: levelColor(sys.mem_percent), label: `<b>${fa(Math.round(sys.mem_percent))}٪</b>` });
-  $("#g-mem-sub").innerHTML = `${bytesHtml(sys.mem_used)} از ${bytesHtml(sys.mem_total)}`;
-  $("#g-disk").innerHTML = ring(sys.disk_percent, { size: 78, stroke: 8, color: levelColor(sys.disk_percent), label: `<b>${fa(Math.round(sys.disk_percent))}٪</b>` });
-  $("#g-disk-sub").innerHTML = `${bytesHtml(sys.disk_used)} از ${bytesHtml(sys.disk_total)}`;
-  $("#uptime-badge").textContent = `روشن از ${durationFa(sys.uptime_seconds)} پیش`;
-  $("#s-addr").textContent = stats.server_address;
-  $("#s-load").textContent = `${fa(sys.load1, 2)} (${fa(sys.cpu_count)} هسته)`;
-}
-
-function renderOnline() {
-  const list = $("#online-list");
-  const sessions = stats.online_sessions;
-  $("#online-count-badge").innerHTML = `<i></i>${fa(sessions.length)}`;
-  if (!sessions.length) {
-    list.innerHTML = `<div class="empty">${ic("wifi")}<b>کسی متصل نیست</b>اتصال‌های جدید اینجا لحظه‌ای نمایش داده می‌شوند.</div>`;
-    return;
-  }
-  list.innerHTML = sessions.map((s) => `
-    <a class="list-item" href="/users?open=${encodeURIComponent(s.username)}">
-      ${avatar(s.username, true)}
-      <div class="grow">
-        <div class="name mono" style="text-align:right">${esc(s.username)}</div>
-        <div class="meta"><span class="badge ${s.proto === "udp" ? "accent" : "info"}" style="height:20px">${s.proto.toUpperCase()}</span>${s.via ? `<span class="via" title="از طریق سرور واسط">${ic("route")}${esc(s.via)}</span>` : `<span class="mono">${esc(s.ip)}</span>`}</div>
-      </div>
-      <div class="side"><div style="font-weight:800">${bytesHtml(s.bytes)}</div><div class="muted">${durationFa(stats.now - s.since)}</div></div>
-    </a>`).join("");
-}
-
-function renderTop() {
-  const list = $("#top-list");
-  const top = stats.top_today;
-  if (!top.length) {
-    list.innerHTML = `<div class="empty">${ic("activity")}<b>هنوز مصرفی ثبت نشده</b>مصرف امروز کاربران اینجا رتبه‌بندی می‌شود.</div>`;
-    return;
-  }
-  const max = top[0].bytes || 1;
-  list.innerHTML = top.map((t, i) => `
-    <a class="hbar-row" href="/users?open=${encodeURIComponent(t.username)}">
-      <div class="top"><span class="n mono">${fa(i + 1)}. ${esc(t.username)}</span><span>${bytesHtml(t.bytes)}</span></div>
-      <div class="bar"><span style="width:${Math.max(4, (t.bytes / max) * 100)}%"></span></div>
-    </a>`).join("");
-}
-
-function renderEnding() {
-  const list = $("#ending-list");
-  const ending = users
-    .filter((u) => u.ending_soon)
-    .sort((a, b) => (a.days_left ?? 999) - (b.days_left ?? 999))
-    .slice(0, 6);
-  if (!ending.length) {
-    list.innerHTML = `<div class="empty">${ic("check")}<b>همه چیز مرتب است</b>کاربری در آستانه اتمام اعتبار یا حجم نیست.</div>`;
-    return;
-  }
-  list.innerHTML = ending.map((u) => {
-    const p = pct(u.data_used_bytes, u.data_limit_bytes);
-    const why = u.days_left !== null && u.days_left <= 3 ? daysLeftLabel(u.days_left) : `${fa(p)}٪ حجم مصرف شده`;
-    return `<div class="list-item" data-open="${esc(u.username)}">
-      ${avatar(u.username, u.online)}
-      <div class="grow"><div class="name mono" style="text-align:right">${esc(u.username)}</div><div class="meta"><span class="badge warn" style="height:20px">${why}</span></div></div>
-      <div class="row" style="gap:6px">
-        <button class="btn xs soft" data-renew="${u.id}" data-days="30">+۳۰ روز</button>
-        ${u.data_limit_bytes ? `<button class="btn xs soft" data-renew="${u.id}" data-gb="10">+۱۰ گیگ</button>` : ""}
-      </div>
-    </div>`;
-  }).join("");
+  $("#g-cpu-sub").title = `بار سیستم ${fa(sys.load1, 2)}`;
+  $("#g-mem").innerHTML = gauge(sys.mem_percent);
+  $("#g-mem-sub").innerHTML = `از ${bytesHtml(sys.mem_total)}`;
+  $("#g-mem-sub").title = `${bytes(sys.mem_used)} مصرف شده`;
+  $("#g-disk").innerHTML = gauge(sys.disk_percent);
+  $("#g-disk-sub").innerHTML = `از ${bytesHtml(sys.disk_total)}`;
+  $("#g-disk-sub").title = `${bytes(sys.disk_used)} پر شده`;
+  $("#uptime").textContent = `روشن از ${durationFa(sys.uptime_seconds)} پیش`;
 }
 
 function renderServices() {
   const inst = stats.instances;
-  const count = (p) => stats.online_sessions.filter((s) => s.proto === p).length;
-  $("#services").innerHTML = ["udp", "tcp"].map((p) => {
+  const count = (p) => stats.online_sessions.filter((x) => x.proto === p).length;
+  const rows = ["udp", "tcp"].map((p) => {
     const up = inst[p].reachable;
-    return `<div class="svc">
-      <div class="svc-icon" style="${up ? "" : "background:var(--rose-soft);color:var(--rose)"}">${ic("shield")}</div>
-      <div class="grow"><div class="t">OpenVPN ${p.toUpperCase()}</div><div class="s">پورت <span class="num">${inst[p].port}</span> · ${fa(count(p))} اتصال فعال</div></div>
-      <span class="badge ${up ? "active" : "bad"}"><i></i>${up ? "در حال اجرا" : "متوقف"}</span>
+    return `<div class="svc-row">
+      <span class="dot ${up ? "ok" : "bad"}"></span>
+      <div class="grow"><div class="t">OpenVPN ${p.toUpperCase()}</div><div class="s">${up ? `در حال اجرا · ${fa(count(p))} اتصال` : `متوقف · ببینید: waze-panel logs ${p}`}</div></div>
     </div>`;
-  }).join("") + (stats.relays || []).map((r) => {
-    const [cls, label] = r.ok === true ? ["active", `سالم · ${fa(r.ms)}ms`] : r.ok === false ? ["bad", "قطع"] : ["", "بررسی نشده"];
-    return `<a class="svc" href="/settings#relay-card">
-      <div class="svc-icon" style="background:var(--sky-soft);color:var(--sky)">${ic("route")}</div>
-      <div class="grow"><div class="t">${esc(r.name)}</div><div class="s">سرور واسط · ${fa(r.sessions)} اتصال از این مسیر</div></div>
-      <span class="badge ${cls}"><i></i>${label}</span>
-    </a>`;
+  });
+  for (const r of stats.relays || []) {
+    const state = r.ok === true ? `سالم · ${fa(r.ms)} میلی‌ثانیه` : r.ok === false ? "قطع است" : "هنوز بررسی نشده";
+    rows.push(`<a class="svc-row" href="/settings#relay-card">
+      <span class="dot ${r.ok === true ? "ok" : r.ok === false ? "bad" : ""}"></span>
+      <div class="grow"><div class="t">${esc(r.name)}</div><div class="s">سرور واسط · ${state}${r.sessions ? ` · ${fa(r.sessions)} اتصال` : ""}</div></div>
+    </a>`);
+  }
+  $("#services").innerHTML = rows.join("");
+}
+
+function renderOnline() {
+  const sessions = stats.online_sessions;
+  if (!sessions.length) {
+    $("#online-list").innerHTML = `<div class="empty"><b>کسی متصل نیست</b>اتصال‌های جدید همین‌جا نمایش داده می‌شوند.</div>`;
+    return;
+  }
+  $("#online-list").innerHTML = sessions.map((s) => `
+    <a class="list-row" href="/users?open=${encodeURIComponent(s.username)}">
+      ${avatar(s.username, true)}
+      <div class="grow">
+        <div class="name ltr" style="text-align:right">${esc(s.username)}</div>
+        <div class="meta ellip">${s.proto.toUpperCase()} · ${s.via ? `از طریق ${esc(s.via)}` : `<span class="mono ltr">${esc(s.ip)}</span>`}</div>
+      </div>
+      <div class="end">${bytesHtml(s.bytes)}<small>${durationFa(stats.now - s.since)}</small></div>
+    </a>`).join("");
+}
+
+function renderTop() {
+  const top = stats.top_today;
+  if (!top.length) {
+    $("#top-list").innerHTML = `<div class="empty"><b>هنوز مصرفی ثبت نشده</b>مصرف امروز کاربران اینجا رتبه‌بندی می‌شود.</div>`;
+    return;
+  }
+  const max = top[0].bytes || 1;
+  $("#top-list").innerHTML = top.map((t, i) => `
+    <a class="list-row" href="/users?open=${encodeURIComponent(t.username)}">
+      ${avatar(t.username, false, "sm")}
+      <div class="grow">
+        <div class="row" style="justify-content:space-between;margin-bottom:7px"><span class="name ltr">${esc(t.username)}</span><span class="num" style="font-size:13px">${bytesHtml(t.bytes)}</span></div>
+        <div class="bar thin"><span style="width:${Math.max(3, (t.bytes / max) * 100)}%"></span></div>
+      </div>
+    </a>`).join("");
+}
+
+function renderEnding() {
+  const ending = users
+    .filter((u) => u.ending_soon)
+    .sort((a, b) => (a.days_left ?? 999) - (b.days_left ?? 999))
+    .slice(0, 8);
+  if (!ending.length) {
+    $("#ending-list").innerHTML = `<div class="empty"><b>همه چیز مرتب است</b>کاربری نزدیک اتمام اعتبار یا حجم نیست.</div>`;
+    return;
+  }
+  $("#ending-list").innerHTML = ending.map((u) => {
+    const p = pct(u.data_used_bytes, u.data_limit_bytes);
+    const byDays = u.days_left !== null && u.days_left <= 3;
+    const why = byDays ? daysLeftLabel(u.days_left) : `${fa(p)}٪ حجم مصرف شده`;
+    return `<div class="list-row clickable ending-row" data-open="${esc(u.username)}">
+      ${avatar(u.username, u.online)}
+      <div class="who-col">
+        <div class="name ltr" style="text-align:right">${esc(u.username)}</div>
+        <div class="meta ellip" style="color:var(--amber)">${why}</div>
+      </div>
+      <div class="use-col">
+        ${u.data_limit_bytes
+          ? `<div class="row" style="justify-content:space-between;font-size:12.5px;color:var(--text-3);margin-bottom:6px"><span>${bytesHtml(u.data_used_bytes)} از ${bytesHtml(u.data_limit_bytes)}</span><span class="num">${fa(p)}٪</span></div>
+             <div class="bar thin ${levelBar(p)}"><span style="width:${Math.max(p, 2)}%"></span></div>`
+          : `<span class="muted" style="font-size:12.5px">حجم نامحدود</span>`}
+      </div>
+      <div class="act-col">
+        <button class="btn xs" type="button" data-renew="${u.id}" data-days="30">+۳۰ روز</button>
+        ${u.data_limit_bytes ? `<button class="btn xs" type="button" data-renew="${u.id}" data-gb="10">+۱۰ گیگ</button>` : ""}
+      </div>
+    </div>`;
   }).join("");
 }
 
@@ -266,15 +265,15 @@ async function load(withUsers = false) {
     if (u) users = u;
     setNavOnline(s.online_count);
     renderKpis();
-    renderTrafficChart();
+    renderTraffic();
     renderSpark();
     renderStatus();
     renderHealth();
+    renderServices();
     renderOnline();
     renderTop();
-    renderServices();
     if (u) renderEnding();
-    $("#updated-at").textContent = `بروزرسانی ${new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    $("#updated-at").textContent = `به‌روز شده ${new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" })}`;
   } catch (e) {
     toast(e.message, "error");
   }
@@ -298,9 +297,14 @@ document.addEventListener("click", async (ev) => {
   if (open) window.location.href = `/users?open=${encodeURIComponent(open.dataset.open)}`;
 });
 
-window.addEventListener("themechange", () => { destroyCharts(); if (stats) { renderTrafficChart(); renderSpark(); renderStatus(); } });
+$("#refresh-btn").addEventListener("click", (ev) => withBusy(ev.currentTarget, () => load(true)));
+window.addEventListener("themechange", () => {
+  Object.values(charts).forEach((c) => c.destroy());
+  Object.keys(charts).forEach((k) => delete charts[k]);
+  if (stats) { renderTraffic(); renderSpark(); renderStatus(); renderKpis(); }
+});
 
-$("#today-date").textContent = new Date().toLocaleDateString("fa-IR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+$("#today-date").textContent = new Date().toLocaleDateString("fa-IR", { weekday: "long", month: "long", day: "numeric" });
 load(true);
-setInterval(() => load(false), 10000);
-setInterval(() => api("/api/users").then((u) => { users = u; renderEnding(); }).catch(() => {}), 30000);
+setInterval(() => { if (!document.hidden) load(false); }, 10000);
+setInterval(() => { if (!document.hidden) api("/api/users").then((u) => { users = u; renderEnding(); }).catch(() => {}); }, 30000);

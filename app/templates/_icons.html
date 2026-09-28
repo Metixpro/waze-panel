@@ -1,6 +1,8 @@
 {#- Stroke icons (Lucide-style, 24px grid). Usage: {{ icon("users") }} -#}
 {% set _paths = {
-  "logo": '<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/>',
+  "logo": '<path d="M3.2 6 7.4 18"/><path d="M7.4 18 12 8.2" opacity=".5"/><path d="M12 8.2 16.6 18"/><path d="M16.6 18 20.8 6" opacity=".5"/>',
+  "arrow-left": '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+  "more": '<circle cx="12" cy="5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/>',
   "dashboard": '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
   "users": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   "user": '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
@@ -62,5 +64,8 @@
 } %}
 {% macro icon(name, cls="") -%}
 <svg class="{{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ _paths[name] | safe }}</svg>
+{%- endmacro %}
+{% macro logo(cls="") -%}
+<span class="logo {{ cls }}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">{{ _paths["logo"] | safe }}</svg></span>
 {%- endmacro %}
 {% macro icons_json() -%}{{ _paths | tojson }}{%- endmacro %}

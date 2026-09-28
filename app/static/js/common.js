@@ -83,36 +83,36 @@ const STATUS = {
 };
 function statusBadge(s) {
   const m = STATUS[s] || { label: s, cls: "" };
-  return `<span class="badge ${m.cls}"><i></i>${m.label}</span>`;
+  return `<span class="status ${m.cls}">${m.label}</span>`;
 }
 
-/* ------------------------------------------------------ avatars & rings */
+/* -------------------------------------------------------------- avatars */
 function hue(str) { let h = 0; for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
 function avatar(name, online = false, cls = "") {
-  const h = hue(name);
   const initials = String(name).replace(/[^a-zA-Z0-9]/g, "").slice(0, 2) || "?";
-  return `<div class="avatar ${cls}" style="background:linear-gradient(135deg,hsl(${h} 72% 60%),hsl(${(h + 45) % 360} 76% 46%))">${esc(initials)}${online ? '<span class="dot"></span>' : ""}</div>`;
+  return `<span class="avatar ${cls}" style="--h:${hue(name)}">${esc(initials)}${online ? '<span class="on"></span>' : ""}</span>`;
 }
+function levelBar(p) { return p >= 100 ? "bad" : p >= 85 ? "warn" : ""; }
+function levelColor(p) { return p >= 100 ? "var(--red)" : p >= 85 ? "var(--amber)" : null; }
 
+// Progress ring. Default stroke is the brand's two blues; pass `color` for
+// warning levels.
 let _ringId = 0;
-function ring(percent, { size = 64, stroke = 7, color = null, label = "", sub = "" } = {}) {
+function ring(percent, { size = 76, stroke = 8, color = null, label = "" } = {}) {
   const id = `rg${++_ringId}`;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const p = Math.min(100, Math.max(0, Number(percent) || 0));
-  const strokeStyle = color || `url(#${id})`;
   return `<div class="ring" style="width:${size}px;height:${size}px">
-    <svg width="${size}" height="${size}">
-      <defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
+    <svg width="${size}" height="${size}" aria-hidden="true">
+      <defs><linearGradient id="${id}" x1="0" y1="1" x2="1" y2="0"><stop offset="0" style="stop-color:var(--brand-b)"/><stop offset="1" style="stop-color:var(--brand-a)"/></linearGradient></defs>
       <circle class="track" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke-width="${stroke}"/>
-      <circle class="val" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" style="stroke:${strokeStyle}" stroke-width="${stroke}"
+      <circle class="val" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color || `url(#${id})`}" stroke-width="${stroke}"
         stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p / 100)}"/>
     </svg>
-    <div class="center">${label}${sub ? `<small>${sub}</small>` : ""}</div>
+    <div class="center">${label}</div>
   </div>`;
 }
-function levelColor(p) { return p >= 100 ? "var(--rose)" : p >= 85 ? "var(--amber)" : null; }
-function levelBar(p) { return p >= 100 ? "bad" : p >= 85 ? "warn" : ""; }
 
 /* ------------------------------------------------------------------ api */
 async function api(path, options = {}) {
@@ -185,17 +185,14 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && overlays.length) { ev.preventDefault(); closeOverlay(); }
 });
 
-function confirmDialog({ title, message = "", ok = "تایید", danger = true, icon = "alert" }) {
+function confirmDialog({ title, message = "", ok = "تایید", danger = true }) {
   return new Promise((resolve) => {
     const dlg = $("#confirm-dialog");
     $("#confirm-title").textContent = title;
     $("#confirm-msg").textContent = message;
     const okBtn = $("#confirm-ok");
     okBtn.textContent = ok;
-    okBtn.className = `btn ${danger ? "danger" : "primary"}`;
-    const iconBox = $("#confirm-icon");
-    iconBox.className = `dialog-icon ${danger ? "" : "info"}`;
-    iconBox.innerHTML = ic(icon);
+    okBtn.className = `btn ${danger ? "danger solid" : "primary"}`;
     let done = false;
     const finish = (val) => {
       if (done) return;
@@ -214,7 +211,22 @@ function confirmDialog({ title, message = "", ok = "تایید", danger = true, 
 }
 
 /* ------------------------------------------------------- copy, QR, busy */
-async function copyText(text, message = "کپی شد") {
+// Brief checkmark on the button that was used, so a copy is felt where it happened.
+function flashCopied(btn) {
+  if (!btn) return;
+  const svg = btn.querySelector("svg");
+  if (!svg || btn.classList.contains("copied")) return;
+  const html = svg.outerHTML;
+  svg.outerHTML = ic("check");
+  btn.classList.add("copied");
+  setTimeout(() => {
+    const now = btn.querySelector("svg");
+    if (now) now.outerHTML = html;
+    btn.classList.remove("copied");
+  }, 1300);
+}
+
+async function copyText(text, message = "کپی شد", btn = null) {
   try {
     await navigator.clipboard.writeText(text);
   } catch (e) {
@@ -227,15 +239,21 @@ async function copyText(text, message = "کپی شد") {
     ta.remove();
   }
   haptic();
+  flashCopied(btn);
   toast(message);
 }
+// Any [data-copy] button copies its value.
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-copy]");
+  if (b) { ev.stopPropagation(); copyText(b.dataset.copy, b.dataset.copyMsg || "کپی شد", b); }
+});
 
 function renderQr(el, text, size = 168) {
   if (!el) return;
   el.innerHTML = "";
   if (typeof QRCode === "undefined" || !text) { el.style.display = "none"; return; }
   el.style.display = "";
-  new QRCode(el, { text, width: size, height: size, colorDark: "#0b0e17", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  new QRCode(el, { text, width: size, height: size, colorDark: "#111316", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
 }
 
 /* ------------------------------------------------------ login / creds */
@@ -272,16 +290,26 @@ document.addEventListener("click", (ev) => {
   if (!b) return;
   const row = b.closest(".cred");
   const v = row.dataset.v;
-  if (b.dataset.cred === "copy") return copyText(v, "کپی شد");
+  if (b.dataset.cred === "copy") return copyText(v, "کپی شد", b);
   const span = row.querySelector(".v");
   const hidden = span.classList.toggle("masked");
   span.textContent = hidden ? "•".repeat(Math.min(12, Math.max(6, v.length))) : v;
   b.innerHTML = ic(hidden ? "eye" : "eye-off");
 });
 
+// Busy state for the button that started an action. Refresh-style buttons
+// ([data-spin]) turn their own icon; others swap it for a spinner. It stays
+// visible for at least a moment, so a fast answer still reads as "done".
 async function withBusy(btn, fn) {
-  if (btn) btn.classList.add("loading");
-  try { return await fn(); } finally { if (btn) btn.classList.remove("loading"); }
+  const cls = btn && btn.hasAttribute("data-spin") ? "spinning" : "loading";
+  const started = Date.now();
+  if (btn) btn.classList.add(cls);
+  try {
+    return await fn();
+  } finally {
+    const wait = Math.max(0, 450 - (Date.now() - started));
+    if (btn) setTimeout(() => btn.classList.remove(cls), wait);
+  }
 }
 
 /* ---------------------------------------------------------------- theme */
@@ -289,7 +317,7 @@ function cssVar(name) { return getComputedStyle(document.documentElement).getPro
 // The phone's status/address bar follows the panel theme.
 function syncThemeColor() {
   const m = document.querySelector('meta[name="theme-color"]');
-  if (m) m.content = document.documentElement.dataset.theme === "light" ? "#f3f5fb" : "#0b0e17";
+  if (m) m.content = document.documentElement.dataset.theme === "light" ? "#f6f7f9" : "#0f1012";
 }
 syncThemeColor();
 window.addEventListener("themechange", syncThemeColor);
@@ -308,9 +336,24 @@ document.addEventListener("click", (ev) => {
 function chartDefaults() {
   if (!window.Chart) return;
   Chart.defaults.font.family = "Vazirmatn, Tahoma, sans-serif";
-  Chart.defaults.font.size = 11;
+  Chart.defaults.font.size = 11.5;
   Chart.defaults.color = cssVar("--text-3");
-  Chart.defaults.borderColor = cssVar("--border");
+  Chart.defaults.borderColor = cssVar("--line");
+  const t = Chart.defaults.plugins.tooltip;
+  t.backgroundColor = cssVar("--toast-bg");
+  t.titleColor = "#f1f3f5";
+  t.bodyColor = "#d5d9df";
+  t.padding = 10;
+  t.cornerRadius = 8;
+  t.displayColors = false;
+  t.rtl = true;
+  t.textDirection = "rtl";
+  t.titleFont = { weight: "600" };
+}
+// Daily bars: the latest day in the accent, earlier days quieter.
+function barColors(n) {
+  const strong = cssVar("--accent-fill");
+  return Array.from({ length: n }, (_, i) => (i === n - 1 ? strong : strong + "73"));
 }
 chartDefaults();
 window.addEventListener("themechange", chartDefaults);
@@ -324,10 +367,11 @@ document.addEventListener("change", (ev) => { if (ev.target.closest(".switch")) 
 
 // Live count on the "online" tab of the bottom navigation.
 function setNavOnline(n) {
-  const b = $("#nav-online");
-  if (!b) return;
-  b.textContent = fa(n);
-  b.classList.toggle("hide", !n);
+  for (const b of [$("#nav-online"), $("#side-online")]) {
+    if (!b) continue;
+    b.textContent = fa(n);
+    b.classList.toggle("hide", !n);
+  }
 }
 
 // The phone's own share sheet (Telegram, WhatsApp, ...), or copy when the
