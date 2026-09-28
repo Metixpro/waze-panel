@@ -39,6 +39,17 @@ log_warn()  { echo -e "    ${C_YELLOW}!${C_RESET} $*"; }
 log_err()   { echo -e "    ${C_RED}FAIL${C_RESET} $*" >&2; }
 die()       { log_err "$*"; exit 1; }
 
+# Random alphanumeric string of length $1. `tr </dev/urandom | head -c N`
+# is the standard way to do this, but /dev/urandom keeps producing data
+# after head has read enough and closes the pipe, so tr gets SIGPIPE; with
+# `set -o pipefail` that makes the whole pipeline "fail" and, combined with
+# `set -e`, silently kills the script right where this is called. The
+# `|| true` swallows that specific non-fatal failure while still keeping
+# the (already-correct) captured output.
+rand_str() {
+  tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c "$1" || true
+}
+
 # ============================================================
 # Defaults (overridable via flags or env)
 # ============================================================
@@ -162,7 +173,7 @@ fi
 ADMIN_USER=$(ask "Panel admin username" "$ADMIN_USER")
 
 if [ -z "$ADMIN_PASS" ]; then
-  ADMIN_PASS="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
+  ADMIN_PASS="$(rand_str 16)"
   log_info "Admin password auto-generated (shown at the end)."
 fi
 
@@ -404,8 +415,8 @@ fi
 # ============================================================
 log_step "Writing the panel configuration file"
 
-SECRET_KEY="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)"
-INTERNAL_TOKEN="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)"
+SECRET_KEY="$(rand_str 48)"
+INTERNAL_TOKEN="$(rand_str 48)"
 
 SUBSCRIPTION_BASE_URL=""
 if [ "$SETUP_NGINX" -eq 1 ] && [ -n "$DOMAIN" ]; then
