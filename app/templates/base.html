@@ -28,6 +28,7 @@
 </head>
 <body>
 {% from "_icons.html" import icon, logo, icons_json %}
+{% set new_version = update_available() %}
 <div class="app">
   <aside class="sidebar">
     <a class="brand" href="/dashboard">{{ logo() }}<span>{{ cfg.PANEL_TITLE }}</span></a>
@@ -35,6 +36,7 @@
       <a href="/dashboard" class="{% if active == 'dashboard' %}active{% endif %}">{{ icon("dashboard") }}<span>داشبورد</span></a>
       <a href="/users" class="{% if active == 'users' %}active{% endif %}">{{ icon("users") }}<span>کاربران</span><span class="nav-count hide" id="side-online" title="آنلاین"></span></a>
       <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">{{ icon("settings") }}<span>تنظیمات</span></a>
+      <a href="/about" class="{% if active == 'about' %}active{% endif %}">{{ icon("info") }}<span>درباره</span>{% if new_version %}<span class="nav-new" title="نسخه‌ی جدید آماده است">جدید</span>{% else %}<span class="nav-ver">v{{ app_version }}</span>{% endif %}</a>
     </nav>
     <div class="sidebar-foot">
       <div class="server-mini">
@@ -64,6 +66,12 @@
     </header>
     <main class="main">
       {% block content %}{% endblock %}
+      {% if active != "about" %}
+      <footer class="app-foot">
+        <a class="af-brand" href="/about">{{ logo() }}<span>Waze Panel <span class="mono">v{{ app_version }}</span></span></a>
+        <a class="af-dev" href="{{ developer.github }}" target="_blank" rel="noopener"><img src="{{ developer.avatar }}?v={{ asset_v }}" alt="" width="20" height="20" loading="lazy" onerror="this.remove()" /><span>طراحی و توسعه: <b>{{ developer.name }}</b></span></a>
+      </footer>
+      {% endif %}
     </main>
   </div>
 </div>
@@ -73,7 +81,7 @@
   <a href="/users" data-nav="users" class="{% if active == 'users' %}active{% endif %}">{{ icon("users") }}<span>کاربران</span></a>
   <a href="/users?new=1" class="plus" id="fab-new" aria-label="کاربر جدید" title="کاربر جدید">{{ icon("plus") }}</a>
   <a href="/users?f=online" data-nav="online">{{ icon("wifi") }}<span>آنلاین</span><b class="nav-badge hide" id="nav-online"></b></a>
-  <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">{{ icon("settings") }}<span>تنظیمات</span></a>
+  <a href="/settings" class="{% if active in ('settings', 'about') %}active{% endif %}">{{ icon("settings") }}<span>تنظیمات</span>{% if new_version %}<i class="nav-dot" title="نسخه‌ی جدید"></i>{% endif %}</a>
 </nav>
 
 <div class="scrim" id="scrim"></div>
@@ -92,7 +100,7 @@
 
 <div id="toasts" aria-live="polite"></div>
 
-<script>window.ICONS = {{ icons_json() }};</script>
+<script>window.ICONS = {{ icons_json() }}; window.WAZE = { version: "{{ app_version }}", repo: "https://github.com/Metixpro/waze-panel" };</script>
 <script src="/static/js/common.js?v={{ asset_v }}"></script>
 {% block scripts %}{% endblock %}
 </body>

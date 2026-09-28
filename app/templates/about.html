@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% set active = "about" %}
+{% block title %}درباره · {{ cfg.PANEL_TITLE }}{% endblock %}
+{% block mobile_title %}درباره{% endblock %}
+
+{% block content %}
+{% from "_icons.html" import icon %}
+{% set short = build.commit[:7] %}
+{% set older = changelog | length - 3 %}
+
+<section class="card about-hero" aria-labelledby="hero-title">
+  <div class="hero-main">
+    <span class="hero-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">
+        <path pathLength="1" d="M3.2 6 7.4 18"/><path pathLength="1" d="M7.4 18 12 8.2" opacity=".5"/><path pathLength="1" d="M12 8.2 16.6 18"/><path pathLength="1" d="M16.6 18 20.8 6" opacity=".5"/>
+      </svg>
+    </span>
+    <div class="hero-id">
+      <h1 id="hero-title">Waze Panel</h1>
+      <p>پنل مدیریت OpenVPN؛ سریع، امن و از اول برای فارسی ساخته‌شده</p>
+      <div class="hero-tags">
+        <span class="tag mono" title="نسخه‌ی نصب‌شده">{{ icon("tag") }}v{{ version }}</span>
+        {% if short %}<a class="tag mono" href="{{ repo_url }}/commit/{{ build.commit }}" target="_blank" rel="noopener" title="کامیتی که این سرور اجرا می‌کند">{{ icon("commit") }}{{ short }}</a>{% endif %}
+        <a class="tag" href="{{ repo_url }}/blob/main/LICENSE" target="_blank" rel="noopener" title="مجوز">{{ icon("scale") }}MIT</a>
+      </div>
+    </div>
+    <div class="hero-actions">
+      <a class="btn primary" href="{{ repo_url }}" target="_blank" rel="noopener">{{ icon("star") }} ستاره در گیت‌هاب<span class="star-count hide" id="star-count"></span></a>
+      <a class="btn" href="{{ repo_url }}/issues" target="_blank" rel="noopener">{{ icon("bug") }} گزارش مشکل</a>
+    </div>
+  </div>
+  <div class="hero-stats">
+    <div><span class="k">{{ icon("star") }}ستاره</span><b id="h-stars">—</b></div>
+    <div><span class="k">{{ icon("fork") }}فورک</span><b id="h-forks">—</b></div>
+    <div><span class="k">{{ icon("history") }}نسخه‌ها</span><b id="h-releases" data-n="{{ changelog | length }}">—</b></div>
+    <div><span class="k">{{ icon("clock") }}آخرین تغییر کد</span><b id="h-pushed">—</b></div>
+  </div>
+</section>
+
+<div class="about-row mt">
+  <section class="card dev-card" aria-labelledby="dev-name">
+    <div class="dev-cover" aria-hidden="true"></div>
+    <div class="dev-body">
+      <div class="dev-top">
+        <span class="dev-avatar">
+          <img src="{{ developer.avatar }}?v={{ asset_v }}" alt="{{ developer.name }}" width="88" height="88" loading="lazy" decoding="async"
+               onerror="this.parentNode.classList.add('fallback'); this.remove();" />
+          <i>{{ developer.name_en[:1] }}</i>
+        </span>
+        <div class="dev-links">
+          {% if developer.telegram %}<a class="btn sm" href="{{ developer.telegram }}" target="_blank" rel="noopener">{{ icon("send") }} تلگرام</a>{% endif %}
+          {% if developer.website %}<a class="btn sm" href="{{ developer.website }}" target="_blank" rel="noopener">{{ icon("globe") }} وب‌سایت</a>{% endif %}
+          <a class="btn sm hide" id="dev-blog" target="_blank" rel="noopener">{{ icon("globe") }} وب‌سایت</a>
+          <a class="btn sm" href="{{ developer.github }}" target="_blank" rel="noopener">{{ icon("github") }} گیت‌هاب</a>
+        </div>
+      </div>
+      <div class="dev-name">
+        <h2 id="dev-name">{{ developer.name }}</h2>
+        <span class="badge accent">سازنده</span>
+      </div>
+      <div class="dev-handle"><span class="ltr">@{{ developer.login }}</span><span class="sep"></span><span class="ltr">{{ developer.name_en }}</span></div>
+      <p class="dev-bio" id="dev-bio">{{ developer.bio }}</p>
+      <div class="dev-meta" id="dev-meta"></div>
+    </div>
+    <a class="dev-foot" href="{{ repo_url }}" target="_blank" rel="noopener">
+      <span class="heart">{{ icon("heart") }}</span>
+      <span class="grow">Waze Panel به کارتان آمده؟ با یک <b>ستاره</b> در گیت‌هاب حمایتش کنید.</span>
+      {{ icon("chevron-left") }}
+    </a>
+  </section>
+
+  <section class="card upd-card" aria-labelledby="upd-title">
+    <div class="card-head">
+      <div class="card-title" id="upd-title">به‌روزرسانی</div>
+      <button class="btn sm" id="upd-check" type="button" data-spin>{{ icon("refresh") }} بررسی</button>
+    </div>
+    <div class="card-body" id="upd-body" aria-live="polite">
+      <div class="upd-state">
+        <span class="skel" style="width:44px;height:44px;border-radius:12px"></span>
+        <div class="grow"><span class="skel" style="width:60%;height:16px"></span><span class="skel" style="width:40%;height:12px;margin-top:8px"></span></div>
+      </div>
+    </div>
+    <div class="card-foot">
+      <div>
+        <div class="upd-auto-t">بررسی خودکار</div>
+        <div>هر ۱۲ ساعت از گیت‌هاب؛ فقط شماره‌ی نسخه خوانده می‌شود.</div>
+      </div>
+      <label class="switch" title="بررسی خودکار"><input type="checkbox" id="auto-check" aria-label="بررسی خودکار" /><span></span></label>
+    </div>
+  </section>
+</div>
+
+<div class="about-row wide mt">
+  <section class="card" aria-labelledby="tl-title">
+    <div class="card-head">
+      <div>
+        <div class="card-title" id="tl-title">تاریخچه‌ی نسخه‌ها</div>
+        <div class="card-sub">چه چیزی، در کدام نسخه</div>
+      </div>
+      <a class="link" href="{{ repo_url }}/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span class="ltr">CHANGELOG.md</span>{{ icon("external") }}</a>
+    </div>
+    <ol class="timeline" id="timeline">
+      {% for e in changelog %}
+      <li class="tl-item{% if e.version == version %} current{% endif %}{% if loop.index > 3 %} older hide{% endif %}">
+        <div class="tl-head">
+          <bdi class="tl-ver mono">v{{ e.version }}</bdi>
+          {% if e.version == version %}<span class="badge accent">نسخه‌ی شما</span>{% endif %}
+          {% if e.date %}<time class="tl-date" datetime="{{ e.date }}"></time>{% endif %}
+        </div>
+        {% if e.title %}<div class="tl-title">{{ e.title }}</div>{% endif %}
+        <ul>{% for item in e["items"] %}<li>{{ item | inline_md }}</li>{% endfor %}</ul>
+      </li>
+      {% endfor %}
+    </ol>
+    {% if older > 0 %}
+    <button class="tl-more" id="tl-more" type="button" data-n="{{ older }}">{{ icon("chevron-down") }}<span>نسخه‌های قبلی</span></button>
+    {% endif %}
+  </section>
+
+  <section class="card sys-card" aria-labelledby="sys-title">
+    <div class="card-head"><div class="card-title" id="sys-title">این سرور</div></div>
+    <div class="card-body">
+      <div class="kv-list" id="sys-list"
+           data-version="{{ version }}" data-commit="{{ short }}" data-os="{{ system.os }}"
+           data-openvpn="{{ system.openvpn }}" data-python="{{ system.python }}">
+        <div><span class="k">نسخه‌ی پنل</span><span class="v mono">{{ version }}</span></div>
+        <div><span class="k">کامیت</span>{% if short %}<a class="v mono link" href="{{ repo_url }}/commit/{{ build.commit }}" target="_blank" rel="noopener">{{ short }}</a>{% else %}<span class="v muted">نامشخص</span>{% endif %}</div>
+        <div><span class="k">آخرین نصب</span><span class="v" id="sys-updated" data-at="{{ build.updated_at }}">—</span></div>
+        <div><span class="k">سیستم‌عامل</span><span class="v ltr">{{ system.os or "—" }}</span></div>
+        <div><span class="k">OpenVPN</span><span class="v mono">{{ system.openvpn or "—" }}</span></div>
+        <div><span class="k">Python</span><span class="v mono">{{ system.python }}</span></div>
+      </div>
+    </div>
+    <div class="card-foot sys-foot">
+      <button class="btn sm" id="sys-copy" type="button">{{ icon("copy") }} کپی مشخصات</button>
+      <a class="btn sm" id="sys-report" href="{{ repo_url }}/issues/new" target="_blank" rel="noopener">{{ icon("bug") }} گزارش مشکل</a>
+    </div>
+  </section>
+</div>
+
+<section class="card mt" aria-labelledby="cr-title">
+  <div class="card-head">
+    <div>
+      <div class="card-title" id="cr-title">ساخته‌شده روی</div>
+      <div class="card-sub">پروژه‌های متن‌بازی که Waze Panel روی شانه‌ی آن‌ها ایستاده</div>
+    </div>
+  </div>
+  <div class="credits">
+    {% for c in credits %}
+    <a class="credit" href="{{ c.url }}" target="_blank" rel="noopener">
+      <span class="credit-top"><b class="ltr">{{ c.name }}</b>{{ icon("external") }}</span>
+      <span class="credit-role">{{ c.role }}</span>
+      <span class="credit-lic mono">{{ c.license }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<p class="about-foot">
+  <span>© ۲۰۲۶ <a href="{{ developer.github }}" target="_blank" rel="noopener">{{ developer.name }}</a></span>
+  <span class="sep"></span><span>منتشرشده با مجوز MIT</span>
+  <span class="sep af-wrap"></span><span class="af-line">ساخته‌شده برای اینترنت آزاد</span>
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/about.js?v={{ asset_v }}"></script>
+{% endblock %}

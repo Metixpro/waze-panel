@@ -7,3 +7,5 @@ venv/
 *.db
 *.db-journal
 .DS_Store
+# written by install.sh: the commit this server runs
+/BUILD

@@ -278,6 +278,15 @@ def _check_relays() -> None:
         logger.exception("relay check failed")
 
 
+def _check_updates() -> None:
+    from app import about
+
+    try:
+        about.scheduled_refresh()
+    except Exception:
+        logger.exception("update check failed")
+
+
 def start_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is not None:
@@ -309,6 +318,16 @@ def start_scheduler() -> BackgroundScheduler:
         minutes=3,
         id="relay_check",
         next_run_time=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=20),
+        max_instances=1,
+        coalesce=True,
+    )
+    # About page / navigation badge: is a newer version out? (opt-out in About)
+    _scheduler.add_job(
+        _check_updates,
+        "interval",
+        hours=12,
+        id="update_check",
+        next_run_time=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=90),
         max_instances=1,
         coalesce=True,
     )

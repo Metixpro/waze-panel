@@ -1,13 +1,20 @@
-# ⚡ Waze Panel
+<p align="center">
+  <img src="app/static/icons/icon-192.png" alt="Waze Panel" width="84">
+</p>
 
-پنل مدیریت OpenVPN با نصب یک‌دستوری، داشبورد زنده، کاربران با پروتکل **UDP و TCP همزمان**،
+<h1 align="center">Waze Panel</h1>
+
+<p align="center">
+پنل مدیریت OpenVPN با نصب یک‌دستوری، داشبورد زنده، کاربران با پروتکل <b>UDP و TCP همزمان</b>،<br>
 لینک اشتراک اختصاصی و کنترل لحظه‌ای حجم و انقضا — روی هسته‌ی اصلی OpenVPN.
+</p>
 
-<p>
+<p align="center">
+  <img alt="version" src="https://img.shields.io/badge/version-1.6.0-3f6cf0">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-7c5cff">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-35d0ff">
   <img alt="openvpn" src="https://img.shields.io/badge/OpenVPN-2.5%2B-33d69f">
-  <img alt="e2e" src="https://img.shields.io/badge/e2e-56%2F56%20passing-33d69f">
+  <img alt="e2e" src="https://img.shields.io/badge/e2e-59%2F59%20passing-33d69f">
 </p>
 
 <p align="center">
@@ -44,6 +51,7 @@
 - **موبایل مثل یک اپ واقعی**: ناوبری پایین با دکمه‌ی + وسط، تب «آنلاین» با شمارنده‌ی زنده، جزئیات کاربر و فرم‌ها به‌صورت **Bottom Sheet** با کشیدن به پایین برای بستن، دکمه‌ی «ارسال» با اشتراک‌گذاری خود گوشی (تلگرام، واتس‌اپ…)، لرزش کوتاه هنگام لمس، و **نصب پنل روی صفحه‌ی اصلی گوشی** (PWA).
 - **بدون وابستگی به CDN**: فونت و کتابخانه‌ها روی خود سرور هستند؛ در شبکه‌هایی که CDNها فیلتر یا کند هستند هم کامل کار می‌کند.
 - پشتیبان‌گیری کامل (دیتابیس + تنظیمات + CA) از داخل پنل.
+- صفحه‌ی **درباره**: معرفی سازنده، آمار پروژه در گیت‌هاب، **بررسی خودکار نسخه‌ی جدید** با نمایش تغییراتش قبل از به‌روزرسانی، تاریخچه‌ی نسخه‌ها ([CHANGELOG](CHANGELOG.md))، مشخصات سرور برای گزارش مشکل و فهرست پروژه‌های متن‌بازی که پنل روی آن‌ها ساخته شده.
 
 **لینک اشتراک (برای کاربر نهایی)**
 - بدون لاگین: درصد مصرف، باقیمانده، روزهای اعتبار و دانلود کانفیگ UDP/TCP — **بدون نمایش پورت‌ها** به کاربر.
@@ -60,11 +68,14 @@
 
 <p align="center"><img src="docs/screenshots/relay.png" alt="سرور واسط ایران" width="80%"></p>
 
+<p align="center"><img src="docs/screenshots/about.png" alt="درباره" width="100%"></p>
+
 <p align="center">
   <img src="docs/screenshots/users-phone.png" alt="موبایل" width="200">
   <img src="docs/screenshots/drawer-phone.png" alt="جزئیات کاربر در موبایل" width="200">
   <img src="docs/screenshots/create-phone.png" alt="ساخت کاربر در موبایل" width="200">
   <img src="docs/screenshots/subscription-phone.png" alt="صفحه اشتراک" width="200">
+  <img src="docs/screenshots/about-phone.png" alt="درباره در موبایل" width="200">
 </p>
 
 ## 🚀 نصب
@@ -126,6 +137,7 @@ waze-panel reset-password    # فراموشی رمز ادمین
 waze-panel backup [dir]      # پشتیبان کامل (دیتابیس + تنظیمات + CA)
 waze-panel restore <file>    # بازگردانی، مثلا روی سرور جدید
 waze-panel update            # به‌روزرسانی به آخرین نسخه
+waze-panel version           # نسخه و کامیتی که روی سرور است
 waze-panel uninstall
 ```
 
@@ -160,7 +172,7 @@ waze-panel uninstall
 
 ## 🧪 تست
 
-`tests/e2e.sh` روی یک نصب واقعی، کلاینت واقعی OpenVPN را از یک network namespace جدا وصل می‌کند و ۵۶ مورد را بررسی می‌کند: اتصال UDP/TCP، حسابداری ترافیک بدون شمارش دوباره، هر سه روش ورود (رمز اشتباه، جعل هویت با گواهی دیگران، کانفیگ مشترک)، محدودیت دستگاه، **عبور از سرور واسط واقعی** (اسکریپت relay.sh در namespace جدا) و failover به اتصال مستقیم، قطع وسط اتصال با اتمام حجم، باطل شدن گواهی و اعتبار CRL.
+`tests/e2e.sh` روی یک نصب واقعی، کلاینت واقعی OpenVPN را از یک network namespace جدا وصل می‌کند و ۵۹ مورد را بررسی می‌کند: صفحه‌ی درباره، اتصال UDP/TCP، حسابداری ترافیک بدون شمارش دوباره، هر سه روش ورود (رمز اشتباه، جعل هویت با گواهی دیگران، کانفیگ مشترک)، محدودیت دستگاه، **عبور از سرور واسط واقعی** (اسکریپت relay.sh در namespace جدا) و failover به اتصال مستقیم، قطع وسط اتصال با اتمام حجم، باطل شدن گواهی و اعتبار CRL.
 
 ```bash
 sudo bash tests/e2e.sh          # KEEP=1 برای نگه داشتن لاگ‌ها
@@ -170,13 +182,13 @@ sudo bash tests/e2e.sh          # KEEP=1 برای نگه داشتن لاگ‌ه�
 
 ```
 app/
-  main.py  config.py  models.py  cli.py  backup.py  relays.py  pwa.py
+  main.py  config.py  models.py  cli.py  backup.py  relays.py  pwa.py  version.py  about.py
   openvpn/   certs.py (easy-rsa) · templates.py (.ovpn) · mgmt.py · scheduler.py
-  routers/   auth · dashboard · users · subscription · internal · settings · relays
+  routers/   auth · dashboard · users · subscription · internal · settings · relays · about
   templates/ صفحات Jinja2 (RTL)       static/  css · js · vendor (فونت و کتابخانه‌های محلی)
 scripts/     هوک‌های OpenVPN · قالب کانفیگ‌ها و systemd · waze-panel-cli.sh
 tests/e2e.sh
-install.sh · uninstall.sh · relay.sh (سرور واسط)
+install.sh · uninstall.sh · relay.sh (سرور واسط) · CHANGELOG.md
 ```
 
 ## 🛠️ توسعه محلی
@@ -195,6 +207,19 @@ uvicorn app.main:app --reload
 ```bash
 sudo waze-panel uninstall        # یا: sudo bash /opt/waze-panel/uninstall.sh --purge
 ```
+
+## 👤 سازنده
+
+<table>
+  <tr>
+    <td><img src="app/static/img/developer.jpg" alt="مهدی طوسی" width="88"></td>
+    <td>
+      <b>مهدی طوسی</b> (<a href="https://github.com/Metixpro">@Metixpro</a>)<br>
+      طراح و توسعه‌دهنده‌ی Waze Panel؛ از هسته‌ی اتصال و اسکریپت نصب تا تک‌تک صفحه‌های پنل.<br>
+      اگر Waze Panel به کارتان آمده، با یک ⭐ در گیت‌هاب حمایتش کنید. گزارش مشکل و پیشنهاد: <a href="https://github.com/Metixpro/waze-panel/issues">Issues</a>
+    </td>
+  </tr>
+</table>
 
 ## 📄 مجوز
 

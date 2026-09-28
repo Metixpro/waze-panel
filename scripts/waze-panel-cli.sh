@@ -11,6 +11,7 @@
 #   waze-panel backup [dir]
 #   waze-panel restore <file>
 #   waze-panel update
+#   waze-panel version
 #   waze-panel uninstall
 #
 set -uo pipefail
@@ -60,7 +61,7 @@ panel_url() {
 }
 
 cmd_status() {
-  echo -e "\n${C_BOLD}Waze Panel${C_RESET}  $(panel_url)\n"
+  echo -e "\n${C_BOLD}$(cli version 2>/dev/null || echo 'Waze Panel')${C_RESET}  $(panel_url)\n"
   svc_line "$SVC_PANEL" "Web panel     "
   svc_line "$SVC_UDP"   "OpenVPN UDP $(env_get OVPN_UDP_PORT)"
   svc_line "$SVC_TCP"   "OpenVPN TCP $(env_get OVPN_TCP_PORT)"
@@ -157,7 +158,7 @@ cmd_uninstall() {
 }
 
 usage() {
-  sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 menu() {
@@ -196,6 +197,7 @@ case "${1:-menu}" in
   backup) cmd_backup "${2:-/root}" ;;
   restore) cmd_restore "${2:-}" ;;
   update) cmd_update ;;
+  version|-v|--version) cli version ;;
   uninstall) cmd_uninstall ;;
   -h|--help|help) usage ;;
   *) usage; exit 1 ;;

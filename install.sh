@@ -492,6 +492,15 @@ else
   log_ok "Latest code fetched from GitHub."
 fi
 
+# Record which commit this server runs (shown in the panel's About page and
+# used by its update check to list what a newer version changes).
+BUILD_SRC="${SCRIPT_SOURCE_DIR:-$APP_DIR}"
+[ -f "${BUILD_SRC}/app/main.py" ] || BUILD_SRC="$APP_DIR"
+BUILD_COMMIT="$(git -C "$BUILD_SRC" rev-parse HEAD 2>/dev/null || true)"
+BUILD_DATE="$(git -C "$BUILD_SRC" log -1 --format=%cI 2>/dev/null || true)"
+printf '{"commit": "%s", "date": "%s", "updated_at": "%s"}\n' \
+  "$BUILD_COMMIT" "$BUILD_DATE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${APP_DIR}/BUILD" 2>/dev/null || true
+
 # From here on the script needs to run with $APP_DIR as the working
 # directory: `python -m app.cli` resolves the `app` package via the
 # current directory, and the earlier PKI step left us in $EASYRSA_DIR.

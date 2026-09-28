@@ -428,3 +428,14 @@ document.addEventListener("click", async (ev) => {
   installPrompt = null;
   $$("[data-install]").forEach((x) => x.classList.add("hide"));
 });
+
+/* ------------------------------------------------------ console signature */
+(function () {
+  if (!window.WAZE || !window.console) return;
+  console.log(
+    `%c W %c Waze Panel v${window.WAZE.version} %c ${window.WAZE.repo}`,
+    "background:#3f6cf0;color:#fff;font-weight:800;padding:3px 7px;border-radius:5px 0 0 5px",
+    "background:#16181b;color:#e9ebee;font-weight:600;padding:3px 9px;border-radius:0 5px 5px 0",
+    "color:#7ea2ff;padding-left:6px"
+  );
+})();

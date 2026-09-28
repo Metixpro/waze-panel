@@ -302,6 +302,10 @@ loadRelays();
     if (best && best[1] > 0) mark(best[0]);
   }, { threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: "-120px 0px -35% 0px" });
   Object.keys(byId).forEach((id) => { const el = document.getElementById(id); if (el) io.observe(el); });
+  // the last section is too short to ever win the observer: at the very bottom, it's the one
+  window.addEventListener("scroll", () => {
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) mark(links[links.length - 1].getAttribute("href").slice(1));
+  }, { passive: true });
   nav.addEventListener("click", (ev) => {
     const a = ev.target.closest("a");
     if (!a) return;

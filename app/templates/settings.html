@@ -4,7 +4,7 @@
 {% block mobile_title %}تنظیمات{% endblock %}
 
 {% block content %}
-{% from "_icons.html" import icon %}
+{% from "_icons.html" import icon, logo %}
 <div class="page-head">
   <div>
     <h1 class="page-title dup">تنظیمات</h1>
@@ -20,6 +20,7 @@
   <a href="#backup-card">پشتیبان</a>
   <a href="#look-card">ظاهر</a>
   <a href="#tech-card">اطلاعات فنی</a>
+  <a href="#about-card">درباره</a>
 </nav>
 
 <section class="sset" id="s-address">
@@ -191,6 +192,21 @@
       </div>
     </div>
   </div>
+</section>
+
+<section class="sset" id="about-card">
+  <div class="sset-info">
+    <h2>درباره</h2>
+    <p>نسخه، سازنده، تاریخچه‌ی تغییرات و بررسی به‌روزرسانی.</p>
+  </div>
+  <a class="card about-link" href="/about">
+    {{ logo() }}
+    <div class="grow">
+      <div class="t">Waze Panel <span class="mono muted">v{{ app_version }}</span>{% if update_available() %} <span class="badge accent">نسخه‌ی جدید</span>{% endif %}</div>
+      <div class="s">طراحی و توسعه: {{ developer.name }}</div>
+    </div>
+    {{ icon("chevron-left") }}
+  </a>
 </section>
 {% endblock %}
 

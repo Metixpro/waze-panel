@@ -101,6 +101,13 @@ USER_ID="$(api -H 'Content-Type: application/json' -d "{\"username\":\"$VUSER\",
 echo "test user: $VUSER (id $USER_ID), poll interval ${POLL}s"
 [ -n "$USER_ID" ] || { red "could not create a user through the API"; exit 1; }
 
+echo; echo "== about page =="
+VERSION="$(cli version | awk '{print $3}')"
+code_of() { curl -s --noproxy '*' -o /dev/null -w '%{http_code}' "$@"; }
+check "About page opens for the admin" [ "$(code_of -b "$COOKIES" "$PANEL/about")" = 200 ]
+check "...and reports the running version ($VERSION)" [ "$(api "$PANEL/api/about" | jget "['version']")" = "$VERSION" ]
+check "...but not without a login" [ "$(code_of "$PANEL/api/about")" = 401 ]
+
 start_client() {  # start_client proto -> waits for the tunnel; returns 0 if up
   local proto="$1" cfg="$WORK/$1.ovpn" log="$WORK/client-$1.log"
   api "$PANEL/api/users/$USER_ID/config/$proto" | sed "s/^remote .* \([0-9]*\)$/remote $HOST_IP \1/" > "$cfg"

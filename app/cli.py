@@ -6,6 +6,7 @@ maintenance:
     python -m app.cli reset-password --username admin --password 'newsecret'
     python -m app.cli list-admins
     python -m app.cli backup --out /root
+    python -m app.cli version
 """
 import argparse
 import sys
@@ -94,6 +95,18 @@ def cmd_list_admins(_args) -> None:
         db.close()
 
 
+def cmd_version(_args) -> None:
+    from app.version import __version__, build_info
+
+    build = build_info()
+    extra = []
+    if build["commit"]:
+        extra.append(f"commit {build['commit'][:7]}")
+    if build["date"]:
+        extra.append(build["date"][:10])
+    print(f"Waze Panel {__version__}" + (f" ({', '.join(extra)})" if extra else ""))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="waze-panel-cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -119,6 +132,8 @@ def main() -> None:
     p = sub.add_parser("backup")
     p.add_argument("--out", help="output file or directory (default: current directory)")
     p.set_defaults(func=cmd_backup)
+
+    sub.add_parser("version").set_defaults(func=cmd_version)
 
     args = parser.parse_args()
     args.func(args)
