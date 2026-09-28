@@ -13,6 +13,7 @@ from app.deps import get_optional_admin
 from app.models import AdminUser, TrafficSample, VpnUser
 from app.openvpn import mgmt
 from app.openvpn.scheduler import get_online_sessions
+from app.relays import get_health, ordered_relays, relay_names_by_ip
 from app.templating import templates
 
 router = APIRouter()
@@ -48,6 +49,28 @@ def _instance_status() -> dict:
     }
 
 
+def _relay_status(db: Session) -> list[dict]:
+    """Enabled relays with their last health check, and how many users are
+    connected through each right now."""
+    health = get_health()
+    via = relay_names_by_ip()
+    users_by_name: dict[str, int] = {}
+    for sess in get_online_sessions():
+        name = via.get(sess["ip"])
+        if name:
+            users_by_name[name] = users_by_name.get(name, 0) + 1
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "ok": health.get(r.id, {}).get("ok"),
+            "ms": health.get(r.id, {}).get("ms"),
+            "sessions": users_by_name.get(r.name, 0),
+        }
+        for r in ordered_relays(db, enabled_only=True)
+    ]
+
+
 @router.get("/api/dashboard/stats")
 def dashboard_stats(admin: AdminUser = Depends(get_optional_admin), db: Session = Depends(get_db)):
     if not admin:
@@ -62,6 +85,9 @@ def dashboard_stats(admin: AdminUser = Depends(get_optional_admin), db: Session 
 
     sessions = get_online_sessions()
     online_usernames = {s["username"] for s in sessions}
+    via = relay_names_by_ip()
+    for sess in sessions:
+        sess["via"] = via.get(sess["ip"])
 
     today = datetime.date.today()
     today_bytes = (
@@ -113,6 +139,7 @@ def dashboard_stats(admin: AdminUser = Depends(get_optional_admin), db: Session 
         "chart_values": chart_values,
         "top_today": [{"id": i, "username": n, "bytes": int(b)} for i, n, b in top_rows],
         "instances": _instance_status(),
+        "relays": _relay_status(db),
         "system": {
             "cpu_percent": cpu_percent,
             "cpu_count": psutil.cpu_count() or 1,

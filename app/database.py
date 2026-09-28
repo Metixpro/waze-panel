@@ -40,6 +40,9 @@ _ADDED_COLUMNS = {
         "auth_password": "VARCHAR(128)",
         "max_devices": "INTEGER NOT NULL DEFAULT 0",
     },
+    "relay_servers": {
+        "source_ip": "VARCHAR(64)",
+    },
 }
 
 

@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models import VpnUser
 from app.openvpn import certs
 from app.openvpn.templates import build_ovpn
+from app.pwa import web_manifest
 from app.templating import templates
 
 router = APIRouter()
@@ -41,6 +42,14 @@ def subscription_page(token: str, request: Request, db: Session = Depends(get_db
             "auth_mode": user.auth_mode or "cert",
         },
     )
+
+
+@router.get("/sub/{token}/manifest.webmanifest")
+def subscription_manifest(token: str, db: Session = Depends(get_db)):
+    """The user can add their subscription page to the home screen and
+    check their usage like an app."""
+    user = _get_user_or_404(token, db)
+    return web_manifest(f"{user.username} · {settings.PANEL_TITLE}", user.username, f"/sub/{token}", f"/sub/{token}")
 
 
 @router.get("/sub/{token}/{proto}")

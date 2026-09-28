@@ -45,12 +45,18 @@ function expiryCell(u) {
   return `${cls ? `<span class="${cls}">${label}</span>` : label}<small>${jDate(u.expire_at, { month: "short", day: "numeric", year: "numeric" })}</small>`;
 }
 
+// Clients behind a relay reach us with the relay's IP: name the relay instead.
+function ipLabel(u) {
+  if (u.last_via) return `<small class="via">${ic("route")}${esc(u.last_via)}</small>`;
+  return u.last_ip ? `<small class="mono">${esc(u.last_ip)}</small>` : "";
+}
+
 function seenCell(u) {
   if (u.online) {
     const devs = u.devices_online > 1 ? ` · ${fa(u.devices_online)} دستگاه` : "";
-    return `<span class="badge active"><i></i>آنلاین · ${u.online_protos.map((p) => p.toUpperCase()).join(" + ")}${devs}</span><small class="mono">${esc(u.last_ip || "")}</small>`;
+    return `<span class="badge active"><i></i>آنلاین · ${u.online_protos.map((p) => p.toUpperCase()).join(" + ")}${devs}</span>${ipLabel(u)}`;
   }
-  return `${relTime(u.last_connected_at)}${u.last_ip ? `<small class="mono">${esc(u.last_ip)}</small>` : ""}`;
+  return `${relTime(u.last_connected_at)}${ipLabel(u)}`;
 }
 
 function authTag(u) {
@@ -109,6 +115,7 @@ function renderCounts() {
     if (el) el.textContent = fa(users.filter(FILTERS[key]).length);
   }
   const online = users.filter((u) => u.online).length;
+  setNavOnline(online);
   $("#users-sub").innerHTML = `${fa(users.length)} کاربر · <span class="live"><i></i>${fa(online)} آنلاین</span>`;
 }
 
@@ -146,17 +153,24 @@ function drawerHtml(u) {
     <button class="btn icon sm ghost" data-close title="بستن">${ic("x")}</button>
   </div>
   <div class="drawer-body">
+    <div class="quick-acts">
+      <button type="button" data-act="share">${ic("send")}<span>ارسال</span></button>
+      <button type="button" data-act="copy">${ic("link")}<span>کپی لینک</span></button>
+      <a href="/api/users/${u.id}/config/udp">${ic("download")}<span>UDP</span></a>
+      <a href="/api/users/${u.id}/config/tcp">${ic("download")}<span>TCP</span></a>
+      <button type="button" data-act="add-days" data-v="30">${ic("gift")}<span>+۳۰ روز</span></button>
+    </div>
     ${alert}
     <div class="section">
       <div class="usage-hero">
-        ${ring(limit ? p : 100, { size: 108, stroke: 10, color: limit ? levelColor(p) : "var(--accent)", label: ringLabel })}
+        ${ring(limit ? p : 100, { size: innerWidth < 640 ? 96 : 108, stroke: 10, color: limit ? levelColor(p) : "var(--accent)", label: ringLabel })}
         <div class="kv">
           <div><div class="k">مصرف شده</div><div class="v">${bytesHtml(u.data_used_bytes)}</div></div>
           <div><div class="k">سقف حجم</div><div class="v">${limit ? bytesHtml(limit) : "نامحدود"}</div></div>
           <div><div class="k">باقیمانده</div><div class="v">${remaining === null ? "نامحدود" : bytesHtml(remaining)}</div></div>
           <div><div class="k">اعتبار</div><div class="v">${daysLeftLabel(u.days_left)}</div></div>
           <div><div class="k">آخرین اتصال</div><div class="v">${u.online ? `<span style="color:var(--green)">آنلاین · ${u.online_protos.map((x) => x.toUpperCase()).join(" + ")}</span>` : relTime(u.last_connected_at)}</div></div>
-          <div><div class="k">آی‌پی</div><div class="v mono">${esc(u.last_ip || "—")}</div></div>
+          <div><div class="k">${u.last_via ? "از طریق" : "آی‌پی"}</div><div class="v ${u.last_via ? "" : "mono"}">${esc(u.last_via || u.last_ip || "—")}</div></div>
         </div>
       </div>
     </div>
@@ -334,7 +348,7 @@ $("#drawer").addEventListener("click", async (ev) => {
   const u = currentUser;
   try {
     if (act === "copy") return copyText(u.sub_link, "لینک اشتراک کپی شد");
-    if (act === "share") return copyText(shareText(u), "مشخصات ورود کپی شد");
+    if (act === "share") return shareOrCopy(shareText(u), u.username);
     if (act === "pw-copy") return copyText($("#pw-form [name=password]").value, "رمز کپی شد");
     if (act === "pw-eye") {
       const inp = $("#pw-form [name=password]");
@@ -521,7 +535,7 @@ $("#create-form").addEventListener("submit", async (ev) => {
       creds.classList.toggle("hide", u.auth_mode === "cert");
       if (u.auth_mode !== "cert") {
         creds.innerHTML = credRow("نام کاربری", u.username) + credRow("رمز", u.password) +
-          `<button type="button" class="btn sm" id="done-share">${ic("copy")} کپی مشخصات برای ارسال</button>`;
+          "";
       }
       $("#create-form-view").classList.add("hide");
       $("#create-done-view").classList.remove("hide");
@@ -534,9 +548,7 @@ $("#create-form").addEventListener("submit", async (ev) => {
 });
 
 $("#done-copy").addEventListener("click", () => copyText($("#done-link").value, "لینک اشتراک کپی شد"));
-$("#done-creds").addEventListener("click", (ev) => {
-  if (ev.target.closest("#done-share") && lastCreated) copyText(shareText(lastCreated), "مشخصات ورود کپی شد");
-});
+$("#done-share").addEventListener("click", () => { if (lastCreated) shareOrCopy(shareText(lastCreated), lastCreated.username); });
 $("#done-another").addEventListener("click", () => {
   resetCreateForm();
   $("#c-username").focus();
@@ -569,13 +581,20 @@ $("#users-list").addEventListener("change", async (ev) => {
   }
 });
 
+function setFilter(f) {
+  filter = FILTERS[f] ? f : "all";
+  $$("#filters button").forEach((x) => x.classList.toggle("active", x.dataset.f === filter));
+  // the bottom nav has its own "online" tab
+  $$(".bottom-nav [data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === (filter === "online" ? "online" : "users")));
+  renderList();
+}
 $("#filters").addEventListener("click", (ev) => {
   const b = ev.target.closest("button[data-f]");
-  if (!b) return;
-  filter = b.dataset.f;
-  $$("#filters button").forEach((x) => x.classList.toggle("active", x === b));
-  renderList();
+  if (b) { haptic(); setFilter(b.dataset.f); }
 });
+$(".bottom-nav [data-nav=online]").addEventListener("click", (ev) => { ev.preventDefault(); setFilter("online"); scrollTo({ top: 0, behavior: "smooth" }); });
+$(".bottom-nav [data-nav=users]").addEventListener("click", (ev) => { ev.preventDefault(); setFilter("all"); scrollTo({ top: 0, behavior: "smooth" }); });
+$("#fab-new").addEventListener("click", (ev) => { ev.preventDefault(); haptic(); openCreate(); });
 $("#q").addEventListener("input", renderList);
 $("#sort").addEventListener("change", renderList);
 $("#refresh-btn").addEventListener("click", (ev) => withBusy(ev.currentTarget, load));
@@ -591,12 +610,13 @@ document.addEventListener("keydown", (ev) => {
 (async () => {
   await load();
   const params = new URLSearchParams(location.search);
+  if (params.get("f")) setFilter(params.get("f"));
   if (params.get("new")) openCreate();
   const openName = params.get("open");
   if (openName) {
     const u = users.find((x) => x.username === openName);
     if (u) openDrawer(u.id);
   }
-  if (params.has("new") || params.has("open")) history.replaceState(null, "", "/users");
+  if (params.has("new") || params.has("open") || params.has("f")) history.replaceState(null, "", "/users");
 })();
 setInterval(() => { if (!overlays.length) load(); }, 20000);

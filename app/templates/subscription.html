@@ -17,6 +17,13 @@
   <link rel="preload" href="/static/vendor/fonts/Vazirmatn-Variable.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/static/css/style.css?v={{ asset_v }}" />
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <meta name="theme-color" content="#0b0e17" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="{{ user.username }}" />
+  <link rel="manifest" href="/sub/{{ user.token }}/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-180.png" />
 </head>
 <body>
 {% from "_icons.html" import icon, icons_json %}
@@ -34,7 +41,10 @@
       <div class="brand-logo" style="width:36px;height:36px;border-radius:11px">{{ icon("logo") }}</div>
       <b>{{ cfg.PANEL_TITLE }}</b>
     </div>
+    <div class="row" style="gap:6px">
+    <button class="btn sm soft hide" data-install type="button">{{ icon("phone") }} نصب برنامه</button>
     <button class="btn icon sm ghost" data-theme-toggle title="تغییر تم">{{ icon("sun", "i-sun") }}{{ icon("moon", "i-moon") }}</button>
+    </div>
   </div>
 
   <div class="card sub-hero">

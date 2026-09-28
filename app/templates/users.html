@@ -11,7 +11,7 @@
   </div>
   <div class="head-actions">
     <button class="btn icon" id="refresh-btn" title="بروزرسانی">{{ icon("refresh") }}</button>
-    <button class="btn primary" id="new-user-btn">{{ icon("user-plus") }} کاربر جدید</button>
+    <button class="btn primary hide-mobile" id="new-user-btn">{{ icon("user-plus") }} کاربر جدید</button>
   </div>
 </div>
 
@@ -100,7 +100,7 @@
         <button type="button" class="mode" data-mode="cert_pass" role="radio">{{ icon("shield-check") }}<b>گواهی + رمز</b><small>دو مرحله‌ای، امن‌ترین</small></button>
         <button type="button" class="mode" data-mode="pass" role="radio">{{ icon("lock") }}<b>فقط رمز</b><small>یک کانفیگ برای همه</small></button>
       </div>
-      <div class="field-row">
+      <div class="field-row stack-sm">
         <div class="field hide" id="c-pass-field">
           <label for="c-pass">رمز اتصال</label>
           <div class="input-group two">
@@ -132,6 +132,7 @@
       <input type="text" id="done-link" class="mono" readonly />
       <button class="btn ghost" type="button" id="done-copy" title="کپی">{{ icon("copy") }}</button>
     </div>
+    <button class="btn soft block" type="button" id="done-share" style="margin-top:10px">{{ icon("send") }} ارسال برای کاربر</button>
     <div class="row" style="margin-top:10px">
       <a class="btn sm grow" id="done-udp" href="#">{{ icon("download") }} کانفیگ UDP</a>
       <a class="btn sm grow" id="done-tcp" href="#">{{ icon("download") }} کانفیگ TCP</a>

@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#0b0e17" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="{{ cfg.PANEL_TITLE }}" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-180.png" />
   <title>{% block title %}{{ cfg.PANEL_TITLE }}{% endblock %}</title>
   <script>
     (function () {
@@ -58,6 +65,7 @@
       <div class="brand-logo">{{ icon("logo") }}</div>
       <div class="title">{{ cfg.PANEL_TITLE }}</div>
       <div class="spacer"></div>
+      <button class="btn icon sm ghost hide" data-install type="button" title="نصب به‌عنوان برنامه">{{ icon("phone") }}</button>
       <button class="btn icon sm ghost" data-theme-toggle title="تغییر تم">{{ icon("sun", "i-sun") }}{{ icon("moon", "i-moon") }}</button>
       <a class="btn icon sm ghost" href="/logout" title="خروج">{{ icon("logout") }}</a>
     </header>
@@ -67,10 +75,12 @@
   </div>
 </div>
 
-<nav class="bottom-nav">
-  <a href="/dashboard" class="{% if active == 'dashboard' %}active{% endif %}">{{ icon("dashboard") }}داشبورد</a>
-  <a href="/users" class="{% if active == 'users' %}active{% endif %}">{{ icon("users") }}کاربران</a>
-  <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">{{ icon("settings") }}تنظیمات</a>
+<nav class="bottom-nav" aria-label="منوی اصلی">
+  <a href="/dashboard" class="{% if active == 'dashboard' %}active{% endif %}">{{ icon("dashboard") }}<span>داشبورد</span></a>
+  <a href="/users" data-nav="users" class="{% if active == 'users' %}active{% endif %}">{{ icon("users") }}<span>کاربران</span></a>
+  <a href="/users?new=1" class="fab" id="fab-new" aria-label="کاربر جدید" title="کاربر جدید">{{ icon("plus") }}</a>
+  <a href="/users?f=online" data-nav="online">{{ icon("wifi") }}<span>آنلاین</span><b class="nav-badge hide" id="nav-online"></b></a>
+  <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">{{ icon("settings") }}<span>تنظیمات</span></a>
 </nav>
 
 <div class="scrim" id="scrim"></div>

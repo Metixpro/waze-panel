@@ -204,3 +204,7 @@ class RelayServer(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
+    # The address the relay's forwarded traffic arrives from, learned by the
+    # health check (differs from `address` on multi-IP relays); lets the
+    # panel say "via <relay>" instead of showing the relay's IP.
+    source_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)

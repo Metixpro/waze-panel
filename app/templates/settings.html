@@ -11,6 +11,16 @@
   </div>
 </div>
 
+<nav class="section-nav" id="section-nav" aria-label="بخش‌های تنظیمات">
+  <a href="#settings-form">{{ icon("globe") }} آدرس</a>
+  <a href="#relay-card">{{ icon("route") }} تانل ایران</a>
+  <a href="#password-form">{{ icon("key") }} امنیت</a>
+  <a href="#shared-card">{{ icon("lock") }} کانفیگ مشترک</a>
+  <a href="#backup-card">{{ icon("archive") }} پشتیبان</a>
+  <a href="#look-card">{{ icon("palette") }} ظاهر</a>
+  <a href="#tech-card">{{ icon("server") }} فنی</a>
+</nav>
+
 <div class="grid cols-2">
   <form class="card" id="settings-form" autocomplete="off">
     <div class="card-head"><div class="card-title">{{ icon("globe") }} آدرس و برند</div></div>
@@ -54,7 +64,48 @@
     </div>
   </form>
 
-  <div class="card">
+  <div class="card span-2 relay-card" id="relay-card">
+    <div class="card-head">
+      <div class="card-title">{{ icon("route") }} سرور واسط ایران (تانل)</div>
+      <div class="head-actions">
+        <button class="btn sm" id="relay-check" type="button" title="بررسی اتصال همه‌ی سرورها">{{ icon("activity") }} بررسی اتصال</button>
+        <button class="btn sm primary" id="relay-add" type="button">{{ icon("plus") }} افزودن سرور</button>
+      </div>
+    </div>
+    <div class="relay-flow" aria-hidden="true">
+      <div class="node">{{ icon("phone") }}<b>کاربران</b><small>داخل ایران</small></div>
+      <div class="wire"><i></i></div>
+      <div class="node hot">{{ icon("flag") }}<b>سرور ایران</b><small>واسط</small></div>
+      <div class="wire"><i></i></div>
+      <div class="node">{{ icon("server") }}<b>این سرور</b><small>OpenVPN</small></div>
+    </div>
+    <p class="dim relay-intro">
+      کاربران به سرور داخل ایران وصل می‌شوند و آن سرور ترافیک را به این سرور می‌رساند؛ در اختلال‌ها و «اینترنت ملی» پایداری خیلی بالاتر می‌رود.
+      کانفیگ‌ها به ترتیب همین لیست امتحان می‌شوند و اگر سروری جواب نداد، خودکار سراغ بعدی می‌روند.
+    </p>
+    <div class="relay-list" id="relay-list"><div class="skel" style="height:64px;border-radius:14px"></div></div>
+    <details class="more relay-adv">
+      <summary>{{ icon("settings") }} تنظیمات پیشرفته {{ icon("chevron-down", "chev") }}</summary>
+      <form class="body" id="relay-options" autocomplete="off">
+        <div class="setting-row">
+          <div><div class="t">اتصال مستقیم به‌عنوان پشتیبان</div><div class="s">اگر هیچ سرور واسطی جواب نداد، کانفیگ مستقیم به همین سرور وصل شود.</div></div>
+          <label class="switch"><input type="checkbox" name="fallback_direct" /><span></span></label>
+        </div>
+        <div class="setting-row">
+          <div><div class="t">پخش کاربران بین سرورهای واسط</div><div class="s">هر کاربر سرورها را با ترتیب مخصوص خودش امتحان می‌کند تا بار بین همه تقسیم شود.</div></div>
+          <label class="switch"><input type="checkbox" name="balance" /><span></span></label>
+        </div>
+        <div class="setting-row">
+          <div><div class="t">زمان انتظار برای هر سرور</div><div class="s">چند ثانیه صبر کند تا سراغ سرور بعدی برود (۳ تا ۶۰).</div></div>
+          <input type="number" name="timeout" min="3" max="60" step="1" style="width:96px" />
+        </div>
+        <button class="btn primary" type="submit">{{ icon("check") }} ذخیره</button>
+        <div class="hint" style="margin-top:10px">تغییرات روی کانفیگ‌هایی اعمال می‌شود که از این به بعد دانلود شوند؛ کاربران فعلی کافی است کانفیگ را دوباره از لینک اشتراک بگیرند.</div>
+      </form>
+    </details>
+  </div>
+
+  <div class="card" id="shared-card">
     <div class="card-head"><div class="card-title">{{ icon("lock") }} کانفیگ مشترک «فقط رمز»</div></div>
     <p class="dim" style="font-size:13px; line-height:1.9; margin:0 0 16px">
       یک فایل بدون گواهی برای همه‌ی کاربرانی که روش ورودشان «فقط رمز» است؛ هر کس با نام کاربری و رمز خودش وارد می‌شود.
@@ -70,7 +121,7 @@
       بدون مشخصات ورود معتبر، این فایل به‌تنهایی به هیچ حسابی دسترسی نمی‌دهد.
     </div>
   </div>
-  <div class="card">
+  <div class="card" id="backup-card">
     <div class="card-head"><div class="card-title">{{ icon("archive") }} پشتیبان‌گیری</div></div>
     <p class="dim" style="font-size:13px; line-height:1.9; margin:0 0 16px">
       یک فایل کامل شامل پایگاه‌داده، تنظیمات و <b>زیرساخت گواهی (CA)</b>. بدون CA، اگر سرور از دست برود همه‌ی کانفیگ‌های کاربران بی‌اعتبار می‌شوند؛ این فایل را بیرون از سرور نگه دارید.
@@ -79,7 +130,7 @@
     <div class="hint" style="margin-top:12px">بازگردانی روی سرور جدید (بعد از نصب پنل): <span class="mono">waze-panel restore &lt;file&gt;</span></div>
   </div>
 
-  <div class="card span-2">
+  <div class="card span-2" id="look-card">
     <div class="card-head"><div class="card-title">{{ icon("palette") }} ظاهر</div></div>
     <div class="setting-row">
       <div><div class="t">تم پنل</div><div class="s">روی همین مرورگر ذخیره می‌شود.</div></div>
@@ -91,7 +142,7 @@
     </div>
   </div>
 
-  <div class="card span-2">
+  <div class="card span-2" id="tech-card">
     <div class="card-head"><div class="card-title">{{ icon("server") }} اطلاعات فنی</div></div>
     <div class="kv" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr))">
       <div><div class="k">پورت پنل وب</div><div class="v num">{{ panel_port }}</div></div>
@@ -106,6 +157,73 @@
       <div><div class="k">وضعیت سرویس‌ها</div><div class="v mono">waze-panel status</div></div>
       <div><div class="k">به‌روزرسانی</div><div class="v mono">waze-panel update</div></div>
       <div><div class="k">بازیابی رمز ادمین</div><div class="v mono">waze-panel reset-password</div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block overlays %}
+{% from "_icons.html" import icon %}
+<div class="modal" id="relay-modal" role="dialog" aria-modal="true">
+  <div id="relay-form-view">
+    <div class="modal-head">
+      <div>
+        <h3 id="relay-modal-title">سرور واسط جدید</h3>
+        <p>سروری داخل ایران که کاربران به آن وصل می‌شوند و ترافیک را به این سرور می‌رساند.</p>
+      </div>
+      <button class="btn icon sm ghost" data-close title="بستن">{{ icon("x") }}</button>
+    </div>
+    <form id="relay-form" autocomplete="off">
+      <div class="field">
+        <label for="r-name">نام</label>
+        <input id="r-name" name="name" type="text" maxlength="40" placeholder="مثلا: تهران - آسیاتک" required />
+      </div>
+      <div class="field">
+        <label for="r-address">آی‌پی یا دامنه‌ی سرور ایران</label>
+        <input id="r-address" name="address" type="text" dir="ltr" class="mono" placeholder="185.x.x.x" required />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="r-udp">پورت UDP روی سرور ایران</label>
+          <input id="r-udp" name="udp_port" type="number" min="1" max="65535" placeholder="{{ udp_port }}" />
+        </div>
+        <div class="field">
+          <label for="r-tcp">پورت TCP روی سرور ایران</label>
+          <input id="r-tcp" name="tcp_port" type="number" min="1" max="65535" placeholder="{{ tcp_port }}" />
+        </div>
+      </div>
+      <div class="hint" style="margin:-6px 0 4px">خالی = همان پورت‌های این سرور. کاربران هیچ‌کدام از این پورت‌ها را در صفحه‌ی اشتراک نمی‌بینند.</div>
+      <div class="modal-foot">
+        <button type="submit" class="btn primary" id="relay-save">{{ icon("check") }} ذخیره</button>
+        <button type="button" class="btn ghost" data-close>انصراف</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="relay-setup-view" class="hide">
+    <div class="modal-head">
+      <div>
+        <h3>راه‌اندازی <span id="rs-name"></span></h3>
+        <p>این دستور را روی <b>سرور ایران</b> با کاربر root اجرا کنید:</p>
+      </div>
+      <button class="btn icon sm ghost" data-close title="بستن">{{ icon("x") }}</button>
+    </div>
+    <div class="code-box"><code id="rs-cmd" dir="ltr"></code><button class="btn icon sm ghost" type="button" data-copy-from="#rs-cmd" title="کپی">{{ icon("copy") }}</button></div>
+    <details class="more" style="margin-top:10px">
+      <summary>{{ icon("download") }} اگر سرور ایران به گیت‌هاب دسترسی ندارد {{ icon("chevron-down", "chev") }}</summary>
+      <div class="body">
+        <p class="dim" style="font-size:12.5px;margin:0 0 10px">همین اسکریپت را مستقیم از خود پنل بگیرید:</p>
+        <div class="code-box"><code id="rs-cmd-alt" dir="ltr"></code><button class="btn icon sm ghost" type="button" data-copy-from="#rs-cmd-alt" title="کپی">{{ icon("copy") }}</button></div>
+      </div>
+    </details>
+    <ol class="steps">
+      <li>با SSH وارد سرور ایران شوید و دستور بالا را بزنید؛ فوروارد UDP و TCP ساخته می‌شود و بعد از ریبوت هم خودکار برقرار است.</li>
+      <li>اینجا «بررسی اتصال» را بزنید تا کل مسیر تست شود.</li>
+      <li>کاربران کانفیگ را دوباره از لینک اشتراک دانلود کنند تا سرور جدید در آن باشد.</li>
+    </ol>
+    <div class="hint" style="margin-top:12px">روی سرور ایران: <span class="mono">waze-relay status</span> · <span class="mono">waze-relay test</span> · <span class="mono">waze-relay uninstall</span></div>
+    <div class="modal-foot">
+      <button type="button" class="btn primary" data-close>{{ icon("check") }} متوجه شدم</button>
     </div>
   </div>
 </div>

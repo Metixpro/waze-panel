@@ -226,6 +226,7 @@ async function copyText(text, message = "کپی شد") {
     try { document.execCommand("copy"); } catch (err) { toast("کپی نشد", "error"); ta.remove(); return; }
     ta.remove();
   }
+  haptic();
   toast(message);
 }
 
@@ -260,8 +261,10 @@ function credRow(label, value, { secret = false } = {}) {
     <button type="button" class="btn icon sm ghost" data-cred="copy" title="کپی">${ic("copy")}</button>
   </div>`;
 }
-function shareText({ username, password, sub_link }) {
-  return [`نام کاربری: ${username}`, password ? `رمز: ${password}` : null, `لینک اشتراک: ${sub_link}`]
+// Ready-to-send text for the customer: the login only for password modes.
+function shareText({ username, password, sub_link, auth_mode }) {
+  const withLogin = auth_mode && auth_mode !== "cert" && password;
+  return [`نام کاربری: ${username}`, withLogin ? `رمز: ${password}` : null, `لینک اشتراک: ${sub_link}`]
     .filter(Boolean).join("\n");
 }
 document.addEventListener("click", (ev) => {
@@ -283,6 +286,13 @@ async function withBusy(btn, fn) {
 
 /* ---------------------------------------------------------------- theme */
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+// The phone's status/address bar follows the panel theme.
+function syncThemeColor() {
+  const m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.content = document.documentElement.dataset.theme === "light" ? "#f3f5fb" : "#0b0e17";
+}
+syncThemeColor();
+window.addEventListener("themechange", syncThemeColor);
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
   try { localStorage.setItem("waze-theme", theme); } catch (e) {}
@@ -304,3 +314,73 @@ function chartDefaults() {
 }
 chartDefaults();
 window.addEventListener("themechange", chartDefaults);
+
+/* ---------------------------------------------------------------- mobile */
+// A short buzz on Android when something happens under the finger.
+function haptic(ms = 8) {
+  try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
+}
+document.addEventListener("change", (ev) => { if (ev.target.closest(".switch")) haptic(); });
+
+// Live count on the "online" tab of the bottom navigation.
+function setNavOnline(n) {
+  const b = $("#nav-online");
+  if (!b) return;
+  b.textContent = fa(n);
+  b.classList.toggle("hide", !n);
+}
+
+// The phone's own share sheet (Telegram, WhatsApp, ...), or copy when the
+// browser has none (e.g. the panel on plain HTTP).
+async function shareOrCopy(text, title = document.title) {
+  if (navigator.share) {
+    try { await navigator.share({ title, text }); haptic(); return; } catch (e) { if (e.name === "AbortError") return; }
+  }
+  copyText(text, "کپی شد؛ در تلگرام یا هر پیام‌رسانی بفرستید");
+}
+
+// On phones drawers and modals are bottom sheets: drag them down to close.
+function enableSheetSwipe(el) {
+  let startY = null, dy = 0, t0 = 0;
+  el.addEventListener("touchstart", (e) => {
+    if (!matchMedia("(max-width: 640px)").matches || !el.classList.contains("open")) return;
+    const onHead = e.target.closest(".drawer-head, .modal-head, .sheet-grip");
+    if ((!onHead && el.scrollTop > 0) || e.target.closest("input, textarea, select, canvas, .chips, .seg")) return;
+    startY = e.touches[0].clientY; dy = 0; t0 = Date.now();
+  }, { passive: true });
+  el.addEventListener("touchmove", (e) => {
+    if (startY === null) return;
+    dy = e.touches[0].clientY - startY;
+    if (dy <= 0) { el.style.transform = ""; return; }
+    el.style.transition = "none";
+    el.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  const end = () => {
+    if (startY === null) return;
+    const fast = dy / Math.max(1, Date.now() - t0) > 0.6;
+    el.style.transition = "";
+    el.style.transform = "";
+    if (dy > 120 || (dy > 40 && fast)) { haptic(); closeOverlay(el); }
+    startY = null;
+  };
+  el.addEventListener("touchend", end);
+  el.addEventListener("touchcancel", end);
+}
+$$(".drawer, .modal").forEach(enableSheetSwipe);
+
+// "Install as app" buttons ([data-install]) appear only when the browser
+// offers installation (Chrome/Android over HTTPS).
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $$("[data-install]").forEach((b) => b.classList.remove("hide"));
+});
+document.addEventListener("click", async (ev) => {
+  const b = ev.target.closest("[data-install]");
+  if (!b || !installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => null);
+  installPrompt = null;
+  $$("[data-install]").forEach((x) => x.classList.add("hide"));
+});

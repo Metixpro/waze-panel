@@ -17,6 +17,7 @@ from app.config import settings
 from app.database import get_db
 from app.models import VpnUser, find_vpn_user
 from app.openvpn.scheduler import enforce_device_limit_soon, finalize_disconnect
+from app.relays import relay_names_by_ip
 
 router = APIRouter(prefix="/internal")
 logger = logging.getLogger("waze_panel.auth")
@@ -72,20 +73,26 @@ def _recent(key: str, now: float) -> deque:
     return q
 
 
+def _shared_ip(ip: str) -> bool:
+    """Everyone behind a relay arrives from the relay's IP: an IP-wide limit
+    there would lock all of them out over a few typos."""
+    return ip in relay_names_by_ip(refresh=False)
+
+
 def _throttled(login: str, ip: str) -> bool:
     now = time.time()
     with _fail_lock:
-        return (
-            len(_recent(f"u:{login}|{ip}", now)) >= _MAX_FAILS_PER_LOGIN
-            or len(_recent(f"ip:{ip}", now)) >= _MAX_FAILS_PER_IP
-        )
+        if len(_recent(f"u:{login}|{ip}", now)) >= _MAX_FAILS_PER_LOGIN:
+            return True
+        return not _shared_ip(ip) and len(_recent(f"ip:{ip}", now)) >= _MAX_FAILS_PER_IP
 
 
 def _note_failure(login: str, ip: str) -> None:
     now = time.time()
     with _fail_lock:
         _recent(f"u:{login}|{ip}", now).append(now)
-        _recent(f"ip:{ip}", now).append(now)
+        if not _shared_ip(ip):
+            _recent(f"ip:{ip}", now).append(now)
         if len(_fails) > 5000:  # forget idle entries
             for key in [k for k, q in _fails.items() if not q or now - q[-1] > _FAIL_WINDOW]:
                 _fails.pop(key, None)

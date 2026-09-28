@@ -194,7 +194,7 @@ function renderOnline() {
       ${avatar(s.username, true)}
       <div class="grow">
         <div class="name mono" style="text-align:right">${esc(s.username)}</div>
-        <div class="meta"><span class="badge ${s.proto === "udp" ? "accent" : "info"}" style="height:20px">${s.proto.toUpperCase()}</span><span class="mono">${esc(s.ip)}</span></div>
+        <div class="meta"><span class="badge ${s.proto === "udp" ? "accent" : "info"}" style="height:20px">${s.proto.toUpperCase()}</span>${s.via ? `<span class="via" title="از طریق سرور واسط">${ic("route")}${esc(s.via)}</span>` : `<span class="mono">${esc(s.ip)}</span>`}</div>
       </div>
       <div class="side"><div style="font-weight:800">${bytesHtml(s.bytes)}</div><div class="muted">${durationFa(stats.now - s.since)}</div></div>
     </a>`).join("");
@@ -249,6 +249,13 @@ function renderServices() {
       <div class="grow"><div class="t">OpenVPN ${p.toUpperCase()}</div><div class="s">پورت <span class="num">${inst[p].port}</span> · ${fa(count(p))} اتصال فعال</div></div>
       <span class="badge ${up ? "active" : "bad"}"><i></i>${up ? "در حال اجرا" : "متوقف"}</span>
     </div>`;
+  }).join("") + (stats.relays || []).map((r) => {
+    const [cls, label] = r.ok === true ? ["active", `سالم · ${fa(r.ms)}ms`] : r.ok === false ? ["bad", "قطع"] : ["", "بررسی نشده"];
+    return `<a class="svc" href="/settings#relay-card">
+      <div class="svc-icon" style="background:var(--sky-soft);color:var(--sky)">${ic("route")}</div>
+      <div class="grow"><div class="t">${esc(r.name)}</div><div class="s">سرور واسط · ${fa(r.sessions)} اتصال از این مسیر</div></div>
+      <span class="badge ${cls}"><i></i>${label}</span>
+    </a>`;
   }).join("");
 }
 
@@ -257,6 +264,7 @@ async function load(withUsers = false) {
     const [s, u] = await Promise.all([api("/api/dashboard/stats"), withUsers ? api("/api/users") : Promise.resolve(null)]);
     stats = s;
     if (u) users = u;
+    setNavOnline(s.online_count);
     renderKpis();
     renderTrafficChart();
     renderSpark();

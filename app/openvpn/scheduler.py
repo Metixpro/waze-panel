@@ -269,6 +269,15 @@ def _refresh_crl() -> None:
         logger.exception("CRL refresh failed")
 
 
+def _check_relays() -> None:
+    from app import relays
+
+    try:
+        relays.run_checks()
+    except Exception:
+        logger.exception("relay check failed")
+
+
 def start_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is not None:
@@ -290,6 +299,16 @@ def start_scheduler() -> BackgroundScheduler:
         hours=24,
         id="crl_refresh",
         next_run_time=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=30),
+        max_instances=1,
+        coalesce=True,
+    )
+    # Relay health (Settings page + dashboard): cheap TCP round trips.
+    _scheduler.add_job(
+        _check_relays,
+        "interval",
+        minutes=3,
+        id="relay_check",
+        next_run_time=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=20),
         max_instances=1,
         coalesce=True,
     )

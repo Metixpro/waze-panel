@@ -12,6 +12,8 @@
 #   - handles username/password logins: password-only users on the shared
 #     certificate-less profile, certificate+password users, wrong passwords,
 #     impersonation attempts, device limits and password changes
+#   - routes clients through a relay server (relay.sh, in its own namespace)
+#     and falls back to the direct address when the relay is down
 #   - revokes the certificate on delete (TLS-level rejection via the CRL)
 #   - keeps a CRL that won't expire any time soon
 # Everything it creates is removed again on exit.
@@ -26,6 +28,9 @@ APP_DIR=/opt/waze-panel
 NS="wazetest$$"
 VETH_H="wzh$$"; VETH_C="wzc$$"
 HOST_IP=192.168.231.1; NS_IP=192.168.231.2
+# relay namespace: client <-> relay on 10.231.10.0/24, relay <-> host on 10.231.11.0/24
+RNS="wazerelay$$"
+RELAY_IP=10.231.10.2; RELAY_OUT_IP=10.231.11.2; RELAY_HOST_IP=10.231.11.1
 TPORT=18765
 WORK="$(mktemp -d)"
 PASS=0; FAIL=0
@@ -62,8 +67,12 @@ cleanup() {
   for pidf in "$WORK"/*.pid; do [ -f "$pidf" ] && kill "$(cat "$pidf")" 2>/dev/null; done
   [ -n "${HTTP_PID:-}" ] && kill "$HTTP_PID" 2>/dev/null
   iptables -D INPUT -i tun+ -p tcp --dport "$TPORT" -j ACCEPT 2>/dev/null
+  ip route del 10.231.10.0/24 via "$RELAY_OUT_IP" 2>/dev/null
+  ip netns del "$RNS" 2>/dev/null
   ip netns del "$NS" 2>/dev/null
   ip link del "$VETH_H" 2>/dev/null
+  ip link del "wzk$$" 2>/dev/null
+  [ -n "${RELAY_ID:-}" ] && api -X DELETE "$PANEL/api/relays/$RELAY_ID" >/dev/null 2>&1
   [ -n "$USER_ID" ] && api -X DELETE "$PANEL/api/users/$USER_ID" >/dev/null 2>&1
   for id in "${EXTRA_IDS[@]}"; do api -X DELETE "$PANEL/api/users/$id" >/dev/null 2>&1; done
   cli delete-admin --username "$ADMIN" >/dev/null 2>&1
@@ -244,6 +253,68 @@ stop_client d1; stop_client d2
 check "...the old password no longer works" refused old "$WORK/shared-udp.ovpn" "$PUSER" "$PW"
 check "...the new one does" run_cfg new "$WORK/shared-udp.ovpn" "$PUSER" "$(field_of "$P_ID" password)"
 stop_client new
+
+echo; echo "== relay server (Iran tunnel) =="
+relay_tests() {
+UDP_PORT="$(env_get OVPN_UDP_PORT)"; TCP_PORT="$(env_get OVPN_TCP_PORT)"; SERVER_ADDR="$(env_get SERVER_ADDRESS)"
+ip netns add "$RNS"
+ip link add "wzq$$" type veth peer name "wzr$$"        # client <-> relay
+ip link set "wzq$$" netns "$NS"; ip link set "wzr$$" netns "$RNS"
+ip link add "wzk$$" type veth peer name "wzo$$"        # host <-> relay
+ip link set "wzo$$" netns "$RNS"
+ip netns exec "$NS" ip addr add 10.231.10.1/24 dev "wzq$$"; ip netns exec "$NS" ip link set "wzq$$" up
+ip netns exec "$RNS" ip addr add "$RELAY_IP/24" dev "wzr$$"; ip netns exec "$RNS" ip link set "wzr$$" up
+ip netns exec "$RNS" ip addr add "$RELAY_OUT_IP/24" dev "wzo$$"; ip netns exec "$RNS" ip link set "wzo$$" up
+ip netns exec "$RNS" ip link set lo up
+ip addr add "$RELAY_HOST_IP/24" dev "wzk$$"; ip link set "wzk$$" up
+ip route add 10.231.10.0/24 via "$RELAY_OUT_IP"   # so the panel's health check can reach the relay
+# the relay helper, straight out of relay.sh
+sed -n "/^cat > \/usr\/local\/bin\/waze-relay <<'WAZE_RELAY'$/,/^WAZE_RELAY$/p" "$(dirname "$0")/../relay.sh" | sed '1d;$d' > "$WORK/waze-relay"
+chmod +x "$WORK/waze-relay"
+relay_on()  { ip netns exec "$RNS" "$WORK/waze-relay" run --to "$RELAY_HOST_IP" --udp "$UDP_PORT" --tcp "$TCP_PORT" >/dev/null; }
+relay_off() { ip netns exec "$RNS" "$WORK/waze-relay" stop >/dev/null; }
+relay_cfg() {  # relay_cfg proto out: the user's config, direct address pointed at this host
+  api "$PANEL/api/users/$USER_ID/config/$1" | sed "s/^remote $SERVER_ADDR /remote $HOST_IP /" > "$2"
+}
+check "relay.sh forwarding rules load" relay_on
+
+RELAY_ID="$(api -H 'Content-Type: application/json' -d "{\"name\":\"e2e-relay\",\"address\":\"$RELAY_IP\"}" "$PANEL/api/relays" | jget "['id']")"
+relay_cfg udp "$WORK/relay-udp.ovpn"
+check "config lists the relay first, then the direct address" \
+  bash -c "grep '^remote ' '$WORK/relay-udp.ovpn' | head -1 | grep -q '^remote $RELAY_IP $UDP_PORT' && grep '^remote ' '$WORK/relay-udp.ovpn' | sed -n 2p | grep -q '^remote $HOST_IP ' && grep -q '^server-poll-timeout' '$WORK/relay-udp.ovpn'"
+check "panel health check sees traffic loop back through the relay" \
+  bash -c "curl -s --noproxy '*' -b '$COOKIES' -X POST '$PANEL/api/relays/check' | python3 -c 'import sys,json; sys.exit(0 if json.load(sys.stdin)[\"$RELAY_ID\"][\"ok\"] else 1)'"
+check "client connects through the relay (UDP)" run_cfg rly "$WORK/relay-udp.ovpn"
+sleep $((POLL + 3))
+check "...the server sees it arriving from the relay" [ "$(field_of "$USER_ID" last_ip)" = "$RELAY_OUT_IP" ]
+check "...and the panel names the relay" [ "$(field_of "$USER_ID" last_via)" = "e2e-relay" ]
+stop_client rly
+relay_cfg tcp "$WORK/relay-tcp.ovpn"
+check "client connects through the relay (TCP)" run_cfg rlt "$WORK/relay-tcp.ovpn"
+stop_client rlt
+
+relay_off
+check "health check notices the relay is down" \
+  bash -c "curl -s --noproxy '*' -b '$COOKIES' -X POST '$PANEL/api/relays/check' | python3 -c 'import sys,json; sys.exit(1 if json.load(sys.stdin)[\"$RELAY_ID\"][\"ok\"] else 0)'"
+started=$(date +%s)
+check "with the relay down, the same config falls back to the direct address" run_cfg rlf "$WORK/relay-udp.ovpn"
+echo "        (failover took $(( $(date +%s) - started ))s)"
+sleep $((POLL + 3))
+check "...(connected directly)" [ "$(field_of "$USER_ID" last_ip)" = "$NS_IP" ]
+stop_client rlf
+relay_on
+
+api -H 'Content-Type: application/json' -d '{"fallback_direct":false,"balance":false,"timeout":8}' "$PANEL/api/relays/options" >/dev/null
+check "direct fallback can be switched off" bash -c "[ \"\$(curl -s --noproxy '*' -b '$COOKIES' '$PANEL/api/users/$USER_ID/config/udp' | grep -c '^remote ')\" = 1 ]"
+api -H 'Content-Type: application/json' -d '{"fallback_direct":true,"balance":false,"timeout":8}' "$PANEL/api/relays/options" >/dev/null
+api -X DELETE "$PANEL/api/relays/$RELAY_ID" >/dev/null; RELAY_ID=""
+check "without relays the config is direct-only again" bash -c "[ \"\$(curl -s --noproxy '*' -b '$COOKIES' '$PANEL/api/users/$USER_ID/config/udp' | grep -c '^remote ')\" = 1 ]"
+}
+if [ "$(api "$PANEL/api/relays" | jget "['relays'].__len__()")" = "0" ]; then
+  relay_tests
+else
+  echo "  (skipped: this server already has relay servers configured)"
+fi
 
 echo; echo "== quota enforcement =="
 check "reconnects over UDP" start_client udp

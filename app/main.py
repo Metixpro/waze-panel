@@ -10,7 +10,8 @@ from starlette.staticfiles import StaticFiles
 from app.config import settings
 from app.database import SessionLocal, init_db
 from app.openvpn.scheduler import start_scheduler, stop_scheduler
-from app.routers import auth, dashboard, internal, settings as settings_router, subscription, users
+from app.routers import auth, dashboard, internal, relays, settings as settings_router, subscription, users
+from app.pwa import web_manifest
 from app.settings_store import load_overrides
 
 logging.basicConfig(
@@ -53,6 +54,18 @@ app.include_router(users.router)
 app.include_router(subscription.router)
 app.include_router(internal.router)
 app.include_router(settings_router.router)
+app.include_router(relays.router)
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def panel_manifest():
+    return web_manifest(settings.PANEL_TITLE, settings.PANEL_TITLE, "/dashboard", "/")
+
+
+@app.get("/relay.sh", include_in_schema=False)
+def relay_script():
+    """The relay installer, for relay servers that can't reach GitHub."""
+    return FileResponse(STATIC_DIR.parent.parent / "relay.sh", media_type="text/x-shellscript")
 
 
 @app.get("/favicon.ico", include_in_schema=False)

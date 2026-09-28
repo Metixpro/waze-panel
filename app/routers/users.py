@@ -13,6 +13,7 @@ from app.deps import get_optional_admin
 from app.models import AUTH_MODES, AdminUser, TrafficSample, VpnUser, generate_vpn_password
 from app.openvpn import certs, mgmt
 from app.openvpn.templates import build_ovpn
+from app.relays import relay_names_by_ip
 from app.templating import templates
 
 router = APIRouter()
@@ -113,6 +114,7 @@ def _serialize(
         "created_at": _iso(user.created_at),
         "last_connected_at": _iso(user.last_connected_at),
         "last_ip": user.last_ip,
+        "last_via": relay_names_by_ip().get(user.last_ip or ""),
         "token": user.token,
         "sub_link": f"{settings.public_base_url}/sub/{user.token}",
     }
