@@ -1,194 +1,123 @@
 {% extends "base.html" %}
 {% set active = "dashboard" %}
-{% block page_title %}داشبورد{% endblock %}
-{% block page_sub %}نمای کلی وضعیت سرور و کاربران{% endblock %}
-{% block topbar_right %}
-<button class="btn ghost sm" id="refresh-btn">{% from "_icons.html" import refresh_icon %}{{ refresh_icon() }} بروزرسانی</button>
-{% endblock %}
+{% block title %}داشبورد · {{ cfg.PANEL_TITLE }}{% endblock %}
 
 {% block content %}
-{% from "_icons.html" import users_stat_icon, wifi_icon, traffic_icon, bolt_icon, server_icon %}
+{% from "_icons.html" import icon %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">سلام، {{ admin.username }}</h1>
+    <div class="page-sub">
+      <span id="today-date"></span>
+      <span class="live"><i></i>زنده</span>
+      <span class="muted" id="updated-at"></span>
+    </div>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="/users">{{ icon("users") }} کاربران</a>
+    <a class="btn primary" href="/users?new=1">{{ icon("user-plus") }} کاربر جدید</a>
+  </div>
+</div>
 
 <div class="grid cols-4">
-  <div class="card stat-card accent-blue">
-    <div class="icon">{{ users_stat_icon() }}</div>
-    <div class="value" id="stat-total-users">—</div>
-    <div class="label">کل کاربران (<span id="stat-active-users">—</span> فعال)</div>
+  <div class="card kpi green">
+    <div class="kpi-top"><div class="kpi-icon">{{ icon("wifi") }}</div><span id="k-online-protos" class="kpi-foot"></span></div>
+    <div class="kpi-value" id="k-online"><span class="skel" style="display:inline-block;width:60px;height:26px"></span></div>
+    <div class="kpi-label">آنلاین همین الان</div>
   </div>
-  <div class="card stat-card accent-green">
-    <div class="icon">{{ wifi_icon() }}</div>
-    <div class="value" id="stat-online">—</div>
-    <div class="label">آنلاین همین الان</div>
+  <div class="card kpi has-spark">
+    <div class="kpi-top"><div class="kpi-icon">{{ icon("activity") }}</div><span class="badge accent" id="k-today-delta"></span></div>
+    <div class="kpi-value" id="k-today"><span class="skel" style="display:inline-block;width:90px;height:26px"></span></div>
+    <div class="kpi-label">مصرف امروز</div>
+    <canvas class="kpi-spark" id="spark-today" dir="ltr"></canvas>
   </div>
-  <div class="card stat-card accent-yellow">
-    <div class="icon">{{ traffic_icon() }}</div>
-    <div class="value" id="stat-today">—</div>
-    <div class="label">مصرف امروز</div>
+  <div class="card kpi sky">
+    <div class="kpi-top"><div class="kpi-icon">{{ icon("database") }}</div></div>
+    <div class="kpi-value" id="k-total"><span class="skel" style="display:inline-block;width:90px;height:26px"></span></div>
+    <div class="kpi-label">کل ترافیک ثبت‌شده</div>
+    <div class="kpi-foot" id="k-avg"></div>
   </div>
-  <div class="card stat-card">
-    <div class="icon">{{ bolt_icon() }}</div>
-    <div class="value" id="stat-total">—</div>
-    <div class="label">مجموع مصرف کل</div>
-  </div>
-</div>
-
-<div class="grid cols-3 mt-16" style="grid-template-columns: 2fr 1fr;">
-  <div class="card">
-    <div class="card-title">
-      <span>مصرف ترافیک ۱۴ روز اخیر</span>
-    </div>
-    <canvas id="traffic-chart" height="110"></canvas>
-  </div>
-
-  <div class="card">
-    <div class="card-title"><span>وضعیت سرور</span></div>
-
-    <div class="progress-row"><span>CPU</span><span id="cpu-value">—</span></div>
-    <div class="bar"><span id="cpu-bar" style="width:0%"></span></div>
-
-    <div class="progress-row mt-16"><span>حافظه (RAM)</span><span id="mem-value">—</span></div>
-    <div class="bar"><span id="mem-bar" style="width:0%"></span></div>
-
-    <div class="progress-row mt-16"><span>دیسک</span><span id="disk-value">—</span></div>
-    <div class="bar"><span id="disk-bar" style="width:0%"></span></div>
-
-    <div class="info-row mt-16">
-      <span class="k">آپتایم سرور</span>
-      <span id="uptime-value">—</span>
-    </div>
+  <div class="card kpi amber">
+    <div class="kpi-top"><div class="kpi-icon">{{ icon("users") }}</div></div>
+    <div class="kpi-value" id="k-users"><span class="skel" style="display:inline-block;width:40px;height:26px"></span></div>
+    <div class="kpi-label">کاربران</div>
+    <div class="kpi-foot" id="k-users-foot"></div>
   </div>
 </div>
 
-<div class="grid cols-2 mt-16">
+<div class="grid dash-main mt">
   <div class="card">
-    <div class="card-title"><span>وضعیت سرویس‌های OpenVPN</span></div>
-    <div class="info-list">
-      <div class="info-row">
-        <span class="k">نمونه UDP (پورت {{ "" }}<span id="udp-port"></span>)</span>
-        <span id="inst-udp" class="badge disabled"><span class="dot"></span> نامشخص</span>
+    <div class="card-head">
+      <div>
+        <div class="card-title">{{ icon("trending") }} ترافیک ۱۴ روز اخیر</div>
+        <div class="card-sub" id="traffic-sub">&nbsp;</div>
       </div>
-      <div class="info-row">
-        <span class="k">نمونه TCP (پورت <span id="tcp-port"></span>)</span>
-        <span id="inst-tcp" class="badge disabled"><span class="dot"></span> نامشخص</span>
+    </div>
+    <div class="chart-box"><canvas id="traffic-chart" dir="ltr"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">{{ icon("server") }} سلامت سرور</div>
+      <span class="badge outline" id="uptime-badge"></span>
+    </div>
+    <div class="gauges">
+      <div><div id="g-cpu"></div><div class="g-label">پردازنده</div><div class="g-sub" id="g-cpu-sub"></div></div>
+      <div><div id="g-mem"></div><div class="g-label">حافظه</div><div class="g-sub" id="g-mem-sub"></div></div>
+      <div><div id="g-disk"></div><div class="g-label">دیسک</div><div class="g-sub" id="g-disk-sub"></div></div>
+    </div>
+    <div class="stat-rows">
+      <div class="stat-row"><span class="k">{{ icon("globe") }} آدرس سرور</span><span class="v mono" id="s-addr"></span></div>
+      <div class="stat-row"><span class="k">{{ icon("cpu") }} بار سیستم</span><span class="v" id="s-load"></span></div>
+    </div>
+  </div>
+</div>
+
+<div class="grid cols-3 mt">
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">{{ icon("wifi") }} متصل‌ها</div>
+      <span class="badge active" id="online-count-badge"><i></i>۰</span>
+    </div>
+    <div class="list list-scroll" id="online-list"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-title">{{ icon("pie") }} وضعیت کاربران</div></div>
+    <div class="donut-wrap">
+      <div style="position:relative; width:136px; height:136px; flex-shrink:0">
+        <canvas id="status-chart" dir="ltr"></canvas>
+        <div style="position:absolute; inset:0; display:grid; place-content:center; text-align:center; line-height:1.25; pointer-events:none">
+          <b id="donut-total" style="font-size:22px"></b><small class="muted">کاربر</small>
+        </div>
       </div>
+      <div class="legend" id="status-legend"></div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-title"><span>کاربران آنلاین</span></div>
-    <div id="online-list" class="info-list">
-      <div class="text-faint" style="font-size:13px;">در حال بارگذاری...</div>
+    <div class="card-head"><div class="card-title">{{ icon("activity") }} پرمصرف‌های امروز</div></div>
+    <div class="hbar" id="top-list"></div>
+  </div>
+</div>
+
+<div class="grid cols-2 mt">
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">{{ icon("calendar") }} نیاز به تمدید</div>
+      <span class="card-sub">کمتر از ۳ روز یا بیش از ۸۵٪ حجم</span>
     </div>
+    <div class="list" id="ending-list"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-title">{{ icon("shield-check") }} سرویس‌های OpenVPN</div></div>
+    <div id="services"></div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script>
-let chart;
-
-function renderChart(labels, values) {
-  const ctx = document.getElementById("traffic-chart");
-  const grad = ctx.getContext("2d").createLinearGradient(0, 0, 0, 220);
-  grad.addColorStop(0, "rgba(124,92,255,0.35)");
-  grad.addColorStop(1, "rgba(124,92,255,0)");
-
-  if (chart) {
-    chart.data.labels = labels;
-    chart.data.datasets[0].data = values;
-    chart.update();
-    return;
-  }
-
-  chart = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [{
-        label: "ترافیک",
-        data: values,
-        borderColor: "#7c5cff",
-        backgroundColor: grad,
-        fill: true,
-        tension: 0.35,
-        pointRadius: 0,
-        borderWidth: 2,
-      }],
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: false }, tooltip: {
-        callbacks: { label: (c) => humanBytes(c.raw) }
-      }},
-      scales: {
-        x: { grid: { display: false }, ticks: { color: "#6b7096", font: { family: "Vazirmatn" } } },
-        y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: {
-          color: "#6b7096",
-          callback: (v) => humanBytes(v),
-          font: { family: "Vazirmatn" }
-        } },
-      },
-    },
-  });
-}
-
-function setInstanceBadge(el, reachable) {
-  el.className = "badge " + (reachable ? "active" : "revoked");
-  el.innerHTML = `<span class="dot"></span> ${reachable ? "در حال اجرا" : "غیرفعال"}`;
-}
-
-function fmtUptime(sec) {
-  const d = Math.floor(sec / 86400);
-  const h = Math.floor((sec % 86400) / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  return `${d} روز ${h} ساعت ${m} دقیقه`;
-}
-
-async function loadStats() {
-  try {
-    const s = await api("/api/dashboard/stats");
-
-    document.getElementById("stat-total-users").textContent = s.total_users;
-    document.getElementById("stat-active-users").textContent = s.active_users;
-    document.getElementById("stat-online").textContent = s.online_count;
-    document.getElementById("stat-today").textContent = humanBytes(s.today_bytes);
-    document.getElementById("stat-total").textContent = humanBytes(s.total_bytes);
-
-    document.getElementById("cpu-value").textContent = s.system.cpu_percent.toFixed(0) + "%";
-    document.getElementById("cpu-bar").style.width = s.system.cpu_percent + "%";
-
-    document.getElementById("mem-value").textContent =
-      s.system.mem_percent.toFixed(0) + "% (" + humanBytes(s.system.mem_used) + " / " + humanBytes(s.system.mem_total) + ")";
-    document.getElementById("mem-bar").style.width = s.system.mem_percent + "%";
-
-    document.getElementById("disk-value").textContent = s.system.disk_percent.toFixed(0) + "%";
-    document.getElementById("disk-bar").style.width = s.system.disk_percent + "%";
-
-    document.getElementById("uptime-value").textContent = fmtUptime(s.system.uptime_seconds);
-
-    document.getElementById("udp-port").textContent = s.instances.udp.port;
-    document.getElementById("tcp-port").textContent = s.instances.tcp.port;
-    setInstanceBadge(document.getElementById("inst-udp"), s.instances.udp.reachable);
-    setInstanceBadge(document.getElementById("inst-tcp"), s.instances.tcp.reachable);
-
-    const onlineList = document.getElementById("online-list");
-    if (s.online_usernames.length === 0) {
-      onlineList.innerHTML = '<div class="text-faint" style="font-size:13px;">در حال حاضر کاربری آنلاین نیست.</div>';
-    } else {
-      onlineList.innerHTML = s.online_usernames.map(u =>
-        `<div class="info-row"><span class="k mono">${esc(u)}</span><span class="badge active"><span class="dot"></span> آنلاین</span></div>`
-      ).join("");
-    }
-
-    renderChart(s.chart_labels, s.chart_values);
-  } catch (e) {
-    toast(e.message, "error");
-  }
-}
-
-document.getElementById("refresh-btn").addEventListener("click", loadStats);
-loadStats();
-setInterval(loadStats, 15000);
-</script>
+<script src="/static/vendor/chart.umd.min.js?v={{ asset_v }}"></script>
+<script>chartDefaults();</script>
+<script src="/static/js/dashboard.js?v={{ asset_v }}"></script>
 {% endblock %}

@@ -12,7 +12,7 @@ from app.database import get_db
 from app.deps import get_optional_admin
 from app.models import AdminUser, TrafficSample, VpnUser
 from app.openvpn import mgmt
-from app.openvpn.scheduler import get_online_usernames
+from app.openvpn.scheduler import get_online_sessions
 from app.templating import templates
 
 router = APIRouter()
@@ -53,14 +53,15 @@ def dashboard_stats(admin: AdminUser = Depends(get_optional_admin), db: Session 
     if not admin:
         return JSONResponse({"detail": "unauthorized"}, status_code=401)
 
-    total_users = db.query(func.count(VpnUser.id)).scalar() or 0
-    active_users = (
-        db.query(func.count(VpnUser.id))
-        .filter(VpnUser.enabled == True, VpnUser.revoked == False)  # noqa: E712
-        .scalar()
-        or 0
-    )
-    online_usernames = get_online_usernames()
+    users = db.query(VpnUser).all()
+    status_counts = {"active": 0, "disabled": 0, "expired": 0, "over_quota": 0, "revoked": 0}
+    ending_soon = 0
+    for u in users:
+        status_counts[u.status_label()] += 1
+        ending_soon += 1 if u.is_ending_soon() else 0
+
+    sessions = get_online_sessions()
+    online_usernames = {s["username"] for s in sessions}
 
     today = datetime.date.today()
     today_bytes = (
@@ -73,7 +74,6 @@ def dashboard_stats(admin: AdminUser = Depends(get_optional_admin), db: Session 
     # someone's usage doesn't make served traffic disappear from the total.
     total_bytes = db.query(func.coalesce(func.sum(TrafficSample.bytes_total), 0)).scalar() or 0
 
-    # last 14 days chart data
     since = today - datetime.timedelta(days=13)
     rows = (
         db.query(TrafficSample.date, func.sum(TrafficSample.bytes_total))
@@ -82,38 +82,49 @@ def dashboard_stats(admin: AdminUser = Depends(get_optional_admin), db: Session 
         .all()
     )
     by_date = {d.isoformat(): int(total) for d, total in rows}
-    chart_labels = []
-    chart_values = []
-    for i in range(14):
-        d = since + datetime.timedelta(days=i)
-        chart_labels.append(d.strftime("%m-%d"))
-        chart_values.append(by_date.get(d.isoformat(), 0))
+    chart_dates = [(since + datetime.timedelta(days=i)).isoformat() for i in range(14)]
+    chart_values = [by_date.get(d, 0) for d in chart_dates]
 
-    # system info
+    top_rows = (
+        db.query(VpnUser.id, VpnUser.username, TrafficSample.bytes_total)
+        .join(TrafficSample, TrafficSample.vpn_user_id == VpnUser.id)
+        .filter(TrafficSample.date == today)
+        .order_by(TrafficSample.bytes_total.desc())
+        .limit(5)
+        .all()
+    )
+
     cpu_percent = psutil.cpu_percent(interval=0.1)
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
-    uptime_seconds = int(time.time() - _BOOT_TIME)
+    load1 = psutil.getloadavg()[0] if hasattr(psutil, "getloadavg") else 0.0
 
     return {
-        "total_users": total_users,
-        "active_users": active_users,
+        "total_users": len(users),
+        "active_users": status_counts["active"],
+        "status_counts": status_counts,
+        "ending_soon": ending_soon,
         "online_count": len(online_usernames),
         "online_usernames": sorted(online_usernames),
+        "online_sessions": sessions,
         "today_bytes": int(today_bytes),
         "total_bytes": int(total_bytes),
-        "chart_labels": chart_labels,
+        "chart_dates": chart_dates,
         "chart_values": chart_values,
+        "top_today": [{"id": i, "username": n, "bytes": int(b)} for i, n, b in top_rows],
         "instances": _instance_status(),
         "system": {
             "cpu_percent": cpu_percent,
+            "cpu_count": psutil.cpu_count() or 1,
+            "load1": round(load1, 2),
             "mem_percent": mem.percent,
             "mem_used": mem.used,
             "mem_total": mem.total,
             "disk_percent": disk.percent,
             "disk_used": disk.used,
             "disk_total": disk.total,
-            "uptime_seconds": uptime_seconds,
+            "uptime_seconds": int(time.time() - _BOOT_TIME),
         },
         "server_address": settings.SERVER_ADDRESS,
+        "now": int(time.time()),
     }

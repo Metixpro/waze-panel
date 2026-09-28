@@ -1,89 +1,176 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>کانفیگ من | {{ panel_title }}</title>
-  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
-  <link rel="stylesheet" href="/static/css/style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>{{ user.username }} · {{ cfg.PANEL_TITLE }}</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("waze-theme");
+        if (!t) t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="preload" href="/static/vendor/fonts/Vazirmatn-Variable.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/static/css/style.css?v={{ asset_v }}" />
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
 </head>
 <body>
-{% from "_icons.html" import logo, wifi_icon, key_icon %}
-<div class="sub-wrap">
-  <div class="sub-card">
-    <div class="top">
-      <div class="logo">{{ logo() }}</div>
-      <div>
-        <div class="username mono">{{ user.username }}</div>
-        <div class="meta">{{ panel_title }} — کانفیگ اختصاصی شما</div>
-      </div>
-    </div>
+{% from "_icons.html" import icon, icons_json %}
+{% set limit = user.data_limit_bytes %}
+<div class="sub-page"
+     data-used="{{ user.data_used_bytes }}"
+     data-limit="{{ limit or '' }}"
+     data-days="{{ days_left if days_left is not none else '' }}"
+     data-expire="{{ user.expire_at.isoformat() + 'Z' if user.expire_at else '' }}"
+     data-status="{{ status_label }}"
+     data-name="{{ user.username }}">
 
-    {% if status_label != "active" %}
-    <div class="error-box">
-      {% if status_label == "disabled" %}این اکانت توسط مدیر غیرفعال شده است.
-      {% elif status_label == "expired" %}مهلت استفاده از این اکانت به پایان رسیده است.
-      {% elif status_label == "over_quota" %}حجم مصرفی این اکانت تمام شده است.
-      {% elif status_label == "revoked" %}این اکانت باطل شده است.
-      {% endif %}
+  <div class="sub-top">
+    <div class="row" style="gap:10px">
+      <div class="brand-logo" style="width:36px;height:36px;border-radius:11px">{{ icon("logo") }}</div>
+      <b>{{ cfg.PANEL_TITLE }}</b>
     </div>
-    {% endif %}
+    <button class="btn icon sm ghost" data-theme-toggle title="تغییر تم">{{ icon("sun", "i-sun") }}{{ icon("moon", "i-moon") }}</button>
+  </div>
 
-    <div class="progress-row">
-      <span>میزان مصرف</span>
-      <span>
-        {{ user.data_used_bytes | humanize_bytes }}
-        {% if user.data_limit_bytes %} / {{ user.data_limit_bytes | humanize_bytes }}{% else %} / نامحدود{% endif %}
-      </span>
-    </div>
-    <div class="bar {% if usage_percent and usage_percent >= 100 %}danger{% elif usage_percent and usage_percent >= 80 %}warn{% endif %}">
-      <span style="width: {{ usage_percent if usage_percent is not none else 6 }}%"></span>
-    </div>
-
-    <div class="sub-download-grid">
-      <a class="proto-btn" href="/sub/{{ user.token }}/udp">
-        {{ wifi_icon() }}
-        <span class="proto-name">UDP</span>
-        <span class="proto-port">پورت {{ udp_port }} — سریع‌تر</span>
-      </a>
-      <a class="proto-btn" href="/sub/{{ user.token }}/tcp">
-        {{ wifi_icon() }}
-        <span class="proto-name">TCP</span>
-        <span class="proto-port">پورت {{ tcp_port }} — پایدارتر</span>
-      </a>
-    </div>
-
-    <div class="info-list">
-      <div class="info-row">
-        <span class="k">وضعیت اکانت</span>
-        <span class="badge {{ status_label }}"><span class="dot"></span>
-          {% if status_label == "active" %}فعال
-          {% elif status_label == "disabled" %}غیرفعال
-          {% elif status_label == "expired" %}منقضی شده
-          {% elif status_label == "over_quota" %}اتمام حجم
-          {% else %}لغو شده{% endif %}
-        </span>
-      </div>
-      <div class="info-row">
-        <span class="k">تاریخ انقضا</span>
-        <span>{{ user.expire_at.strftime("%Y-%m-%d") if user.expire_at else "نامحدود" }}</span>
-      </div>
-    </div>
-
-    <div class="qr-box mt-16" id="sub-qr" title="برای باز کردن همین صفحه روی گوشی اسکن کنید"></div>
-
-    <div class="help-note">
-      برای اتصال، یکی از فایل‌های بالا را دانلود کرده و در اپلیکیشن OpenVPN Connect (اندروید/iOS/ویندوز/مک) باز کنید.
-      اگر یک پروتکل فیلتر یا مسدود بود، پروتکل دیگر را امتحان کنید. این لینک را در اختیار افراد دیگر قرار ندهید.
+  <div class="card sub-hero">
+    <div id="sub-ring"></div>
+    <div class="user mono">{{ user.username }}</div>
+    <div style="margin-top:6px" id="sub-status"></div>
+    <div class="sub-stats">
+      <div><div class="k">مصرف شده</div><div class="v" id="st-used"></div></div>
+      <div><div class="k">باقیمانده</div><div class="v" id="st-left"></div></div>
+      <div><div class="k">اعتبار</div><div class="v" id="st-days"></div></div>
     </div>
   </div>
+
+  {% if status_label != "active" %}
+  <div class="alert {{ 'warn' if status_label in ('expired', 'over_quota') else '' }}">
+    {{ icon("alert") }}
+    <span>
+      {% if status_label == "disabled" %}این اکانت توسط پشتیبانی غیرفعال شده است.
+      {% elif status_label == "expired" %}مهلت استفاده از اکانت تمام شده؛ برای تمدید با پشتیبانی تماس بگیرید.
+      {% elif status_label == "over_quota" %}حجم اکانت تمام شده؛ برای افزایش حجم با پشتیبانی تماس بگیرید.
+      {% else %}این اکانت باطل شده است.{% endif %}
+    </span>
+  </div>
+  {% endif %}
+
+  <div class="section-title" style="margin:6px 4px -4px">{{ icon("download") }} دریافت کانفیگ</div>
+  <a class="proto-card" href="/sub/{{ user.token }}/udp">
+    <div class="icon">{{ icon("bolt") }}</div>
+    <div>
+      <div class="t">UDP <span class="badge accent">پیشنهادی</span></div>
+      <div class="s">سریع‌تر و کم‌تاخیرتر · پورت <span class="num">{{ udp_port }}</span></div>
+    </div>
+    <span class="btn icon sm soft go">{{ icon("download") }}</span>
+  </a>
+  <a class="proto-card" href="/sub/{{ user.token }}/tcp">
+    <div class="icon" style="background:var(--sky-soft);color:var(--sky)">{{ icon("shield") }}</div>
+    <div>
+      <div class="t">TCP</div>
+      <div class="s">پایدارتر در شبکه‌های محدود · پورت <span class="num">{{ tcp_port }}</span></div>
+    </div>
+    <span class="btn icon sm soft go">{{ icon("download") }}</span>
+  </a>
+  <div class="hint" style="margin:-2px 6px 0">اگر با UDP وصل نشدید، کانفیگ TCP را امتحان کنید.</div>
+
+  <details class="more" open>
+    <summary>{{ icon("info") }} راهنمای اتصال {{ icon("chevron-down", "chev") }}</summary>
+    <div class="body">
+      <div class="seg" id="platforms">
+        <button data-p="android">{{ icon("phone") }} اندروید</button>
+        <button data-p="ios">{{ icon("phone") }} آیفون</button>
+        <button data-p="windows">{{ icon("monitor") }} ویندوز</button>
+        <button data-p="mac">{{ icon("monitor") }} مک</button>
+      </div>
+      <div data-guide="android">
+        <ol class="steps">
+          <li>اپلیکیشن رسمی OpenVPN Connect را از گوگل‌پلی نصب کنید.</li>
+          <li>روی کانفیگ UDP (یا TCP) در بالا بزنید تا دانلود شود.</li>
+          <li>فایل دانلودشده را باز کنید، OpenVPN را انتخاب کنید و بعد Add و اتصال را بزنید.</li>
+        </ol>
+        <a class="btn soft block" style="margin-top:14px" href="https://play.google.com/store/apps/details?id=net.openvpn.openvpn" target="_blank" rel="noopener">{{ icon("external") }} OpenVPN Connect در گوگل‌پلی</a>
+      </div>
+      <div data-guide="ios" class="hide">
+        <ol class="steps">
+          <li>اپلیکیشن OpenVPN Connect را از اپ‌استور نصب کنید.</li>
+          <li>روی کانفیگ UDP (یا TCP) بزنید؛ بعد از دانلود، گزینه‌ی اشتراک‌گذاری را بزنید و OpenVPN را انتخاب کنید.</li>
+          <li>در اپ، Add و سپس اتصال را بزنید.</li>
+        </ol>
+        <a class="btn soft block" style="margin-top:14px" href="https://apps.apple.com/app/openvpn-connect/id590379981" target="_blank" rel="noopener">{{ icon("external") }} OpenVPN Connect در اپ‌استور</a>
+      </div>
+      <div data-guide="windows" class="hide">
+        <ol class="steps">
+          <li>OpenVPN Connect را از سایت رسمی OpenVPN دانلود و نصب کنید.</li>
+          <li>کانفیگ UDP (یا TCP) را دانلود کنید.</li>
+          <li>در برنامه، Import Profile ← File را بزنید، فایل را انتخاب کنید و وصل شوید.</li>
+        </ol>
+        <a class="btn soft block" style="margin-top:14px" href="https://openvpn.net/client/" target="_blank" rel="noopener">{{ icon("external") }} دانلود OpenVPN Connect</a>
+      </div>
+      <div data-guide="mac" class="hide">
+        <ol class="steps">
+          <li>OpenVPN Connect را برای macOS از سایت رسمی OpenVPN نصب کنید.</li>
+          <li>کانفیگ UDP (یا TCP) را دانلود کنید.</li>
+          <li>فایل را روی برنامه بکشید (یا Import Profile ← File) و وصل شوید.</li>
+        </ol>
+        <a class="btn soft block" style="margin-top:14px" href="https://openvpn.net/client/" target="_blank" rel="noopener">{{ icon("external") }} دانلود OpenVPN Connect</a>
+      </div>
+    </div>
+  </details>
+
+  <details class="more" id="share-box">
+    <summary>{{ icon("qr") }} باز کردن روی دستگاه دیگر {{ icon("chevron-down", "chev") }}</summary>
+    <div class="body center">
+      <div class="qr-box" id="sub-qr"></div>
+      <p class="dim" style="font-size:12.5px; margin:12px 0">این QR را با دوربین گوشی اسکن کنید تا همین صفحه باز شود.</p>
+      <button class="btn block" id="copy-link">{{ icon("copy") }} کپی لینک این صفحه</button>
+    </div>
+  </details>
+
+  <p class="muted center" style="font-size:11.5px; margin:6px 0 0">این لینک مخصوص شماست؛ آن را در اختیار دیگران قرار ندهید.</p>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<div id="toasts" aria-live="polite"></div>
+<script>window.ICONS = {{ icons_json() }};</script>
+<script src="/static/js/common.js?v={{ asset_v }}"></script>
+<script src="/static/vendor/qrcode.min.js?v={{ asset_v }}"></script>
 <script>
   (function () {
-    var el = document.getElementById("sub-qr");
-    if (typeof QRCode === "undefined") { el.style.display = "none"; return; }
-    new QRCode(el, { text: window.location.href, width: 150, height: 150, colorDark: "#0b0e17", colorLight: "#ffffff" });
+    var root = document.querySelector(".sub-page");
+    var used = +root.dataset.used || 0;
+    var limit = root.dataset.limit ? +root.dataset.limit : null;
+    var days = root.dataset.days === "" ? null : +root.dataset.days;
+    var p = limit ? pct(used, limit) : 100;
+    var label = limit ? "<b>" + fa(p) + "٪</b><small>مصرف شده</small>" : "<b>∞</b><small>حجم نامحدود</small>";
+    document.getElementById("sub-ring").innerHTML = ring(p, { size: 132, stroke: 11, color: limit ? levelColor(p) : null, label: label });
+    document.getElementById("sub-status").innerHTML = statusBadge(root.dataset.status);
+    document.getElementById("st-used").innerHTML = bytesHtml(used);
+    document.getElementById("st-left").innerHTML = !limit ? "نامحدود" : used >= limit ? "تمام شده" : bytesHtml(limit - used);
+    document.getElementById("st-days").textContent = days === null ? "نامحدود" : days <= 0 ? "تمام شده" : fa(days) + " روز";
+    if (root.dataset.expire) document.getElementById("st-days").title = "تا " + jDate(root.dataset.expire);
+
+    var ua = navigator.userAgent;
+    var platform = /android/i.test(ua) ? "android" : /iphone|ipad|ipod/i.test(ua) ? "ios" : /mac os x/i.test(ua) ? "mac" : "windows";
+    function show(p) {
+      document.querySelectorAll("#platforms button").forEach(function (b) { b.classList.toggle("active", b.dataset.p === p); });
+      document.querySelectorAll("[data-guide]").forEach(function (g) { g.classList.toggle("hide", g.dataset.guide !== p); });
+    }
+    document.getElementById("platforms").addEventListener("click", function (ev) {
+      var b = ev.target.closest("button[data-p]");
+      if (b) show(b.dataset.p);
+    });
+    show(platform);
+
+    var qrDone = false;
+    document.getElementById("share-box").addEventListener("toggle", function () {
+      if (this.open && !qrDone) { renderQr(document.getElementById("sub-qr"), location.href, 170); qrDone = true; }
+    });
+    document.getElementById("copy-link").addEventListener("click", function () { copyText(location.href, "لینک کپی شد"); });
   })();
 </script>
 </body>

@@ -37,6 +37,9 @@ _last_seen: dict[tuple[str, str], tuple[int, int, int]] = {}
 # (proto, common_name) -> (finalized_session_start_t or None, finalized_at)
 _finalized: dict[tuple[str, str], tuple[int | None, float]] = {}
 
+# (proto, common_name) -> live details for the dashboard
+_session_info: dict[tuple[str, str], dict] = {}
+
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -110,6 +113,13 @@ def _poll_once() -> None:
                         # First sight of this connection: count everything so far.
                         delta = sess.bytes_received + sess.bytes_sent
                     _last_seen[key] = (sess.connected_since_t, sess.bytes_received, sess.bytes_sent)
+                    _session_info[key] = {
+                        "username": sess.common_name,
+                        "proto": proto,
+                        "ip": sess.real_address.rsplit(":", 1)[0],
+                        "since": sess.connected_since_t,
+                        "bytes": sess.bytes_received + sess.bytes_sent,
+                    }
 
                     user = db.query(VpnUser).filter(VpnUser.username == sess.common_name).first()
                     if user is None:
@@ -133,6 +143,7 @@ def _poll_once() -> None:
 
         for key in [k for k in _last_seen if k not in seen_keys]:
             _last_seen.pop(key, None)
+            _session_info.pop(key, None)
 
     for port, username, client_id in to_kill:
         logger.info("disconnecting '%s' (disabled/expired/over quota/unknown)", username)
@@ -151,6 +162,7 @@ def finalize_disconnect(proto: str, common_name: str, bytes_received: int, bytes
 
     with _lock:
         prev = _last_seen.pop(key, None)
+        _session_info.pop(key, None)
         if prev is not None:
             delta = max(0, final_total - (prev[1] + prev[2]))
             _finalized[key] = (prev[0], time.time())
@@ -224,3 +236,10 @@ def get_online_usernames() -> set[str]:
     recent poll. Cheap, in-memory, no DB/socket hit."""
     with _lock:
         return {cn for (_proto, cn) in _last_seen.keys()}
+
+
+def get_online_sessions() -> list[dict]:
+    """Live sessions from the most recent poll (newest first)."""
+    with _lock:
+        sessions = [dict(v) for k, v in _session_info.items() if k in _last_seen]
+    return sorted(sessions, key=lambda s: s["since"], reverse=True)

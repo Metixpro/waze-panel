@@ -88,6 +88,32 @@ class VpnUser(Base):
             and not self.is_over_quota()
         )
 
+    def status_label(self) -> str:
+        if self.revoked:
+            return "revoked"
+        if not self.enabled:
+            return "disabled"
+        if self.is_expired():
+            return "expired"
+        if self.is_over_quota():
+            return "over_quota"
+        return "active"
+
+    def days_left(self) -> int | None:
+        if self.expire_at is None:
+            return None
+        delta = self.expire_at.replace(tzinfo=datetime.timezone.utc) - _utcnow()
+        return max(0, delta.days + (1 if delta.seconds > 0 else 0))
+
+    def is_ending_soon(self) -> bool:
+        """Active but about to run out: <= 3 days or >= 85% of its quota."""
+        if self.status_label() != "active":
+            return False
+        days = self.days_left()
+        if days is not None and days <= 3:
+            return True
+        return bool(self.data_limit_bytes) and self.data_used_bytes >= 0.85 * self.data_limit_bytes
+
     def regenerate_token(self) -> None:
         self.token = uuid.uuid4().hex
 

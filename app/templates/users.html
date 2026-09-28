@@ -1,138 +1,133 @@
 {% extends "base.html" %}
 {% set active = "users" %}
-{% block page_title %}کاربران{% endblock %}
-{% block page_sub %}ساخت، مدیریت و کنترل مصرف کاربران VPN{% endblock %}
+{% block title %}کاربران · {{ cfg.PANEL_TITLE }}{% endblock %}
 
 {% block content %}
-{% from "_icons.html" import search_icon, plus_icon, copy_icon, download_icon, power_icon, trash_icon, refresh_icon %}
+{% from "_icons.html" import icon %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">کاربران</h1>
+    <div class="page-sub" id="users-sub"><span class="skel" style="display:inline-block;width:160px;height:14px"></span></div>
+  </div>
+  <div class="head-actions">
+    <button class="btn icon" id="refresh-btn" title="بروزرسانی">{{ icon("refresh") }}</button>
+    <button class="btn primary" id="new-user-btn">{{ icon("user-plus") }} کاربر جدید</button>
+  </div>
+</div>
 
 <div class="toolbar">
-  <div class="search-box">
-    {{ search_icon() }}
-    <input type="search" id="search-input" placeholder="جستجوی نام کاربری..." />
+  <div class="input-icon">
+    {{ icon("search") }}
+    <input type="search" id="q" placeholder="جستجوی نام کاربری یا یادداشت…" autocomplete="off" />
+    <kbd>/</kbd>
   </div>
-  <div class="flex gap-8">
-    <button class="btn ghost sm" id="refresh-btn">{{ refresh_icon() }} بروزرسانی</button>
-    <button class="btn primary" id="new-user-btn">{{ plus_icon() }} کاربر جدید</button>
-  </div>
+  <select id="sort" aria-label="مرتب‌سازی">
+    <option value="new">جدیدترین</option>
+    <option value="usage">بیشترین مصرف</option>
+    <option value="expiry">نزدیک‌ترین انقضا</option>
+    <option value="seen">آخرین اتصال</option>
+    <option value="name">نام</option>
+  </select>
 </div>
 
-<div class="card">
-  <div class="table-wrap">
-    <table class="data" id="users-table">
-      <thead>
-        <tr>
-          <th></th>
-          <th>کاربر</th>
-          <th>وضعیت</th>
-          <th>مصرف</th>
-          <th>انقضا</th>
-          <th>آخرین اتصال</th>
-          <th>عملیات</th>
-        </tr>
-      </thead>
-      <tbody id="users-tbody">
-        <tr><td colspan="7" class="text-faint" style="text-align:center; padding:30px;">در حال بارگذاری...</td></tr>
-      </tbody>
-    </table>
-  </div>
+<div class="seg" id="filters" style="margin-bottom:14px">
+  <button data-f="all" class="active">همه <span class="c" data-c="all">۰</span></button>
+  <button data-f="online">آنلاین <span class="c" data-c="online">۰</span></button>
+  <button data-f="active">فعال <span class="c" data-c="active">۰</span></button>
+  <button data-f="ending">رو به اتمام <span class="c" data-c="ending">۰</span></button>
+  <button data-f="expired">منقضی <span class="c" data-c="expired">۰</span></button>
+  <button data-f="over_quota">اتمام حجم <span class="c" data-c="over_quota">۰</span></button>
+  <button data-f="disabled">غیرفعال <span class="c" data-c="disabled">۰</span></button>
 </div>
 
-<!-- Create user modal -->
-<div class="modal-backdrop" id="modal-create">
-  <div class="modal">
-    <div class="modal-header">
-      <h3>ساخت کاربر جدید</h3>
-      <button class="btn icon-only ghost sm" onclick="closeModal('modal-create')">✕</button>
-    </div>
-    <div class="modal-sub">یک گواهی OpenVPN جدید ساخته می‌شود و لینک اشتراک به‌صورت خودکار تولید می‌گردد.</div>
-
-    <form id="create-form">
-      <div class="field">
-        <label>نام کاربری (فقط انگلیسی)</label>
-        <input type="text" name="username" class="mono" placeholder="john_doe" required pattern="[a-zA-Z][a-zA-Z0-9_-]{2,31}" />
-        <div class="hint">با حرف شروع شود، ۳ تا ۳۲ کاراکتر، فقط حروف/عدد انگلیسی و - _</div>
-      </div>
-      <div class="field">
-        <label>یادداشت (اختیاری)</label>
-        <input type="text" name="note" placeholder="مثلا: مشتری تلگرام" />
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>حجم مجاز (گیگابایت)</label>
-          <input type="number" name="data_limit_gb" min="0" step="0.5" placeholder="نامحدود" />
-        </div>
-        <div class="field">
-          <label>مدت اعتبار (روز)</label>
-          <input type="number" name="expire_days" min="0" step="1" placeholder="نامحدود" />
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button type="submit" class="btn primary">{{ plus_icon() }} ساخت کاربر</button>
-        <button type="button" class="btn ghost" onclick="closeModal('modal-create')">انصراف</button>
-      </div>
-    </form>
+<div class="card users-card">
+  <div class="users-head">
+    <div>کاربر</div><div>وضعیت</div><div>مصرف</div><div>اعتبار</div><div>آخرین اتصال</div><div style="text-align:left">عملیات</div>
   </div>
-</div>
-
-<!-- Detail / edit modal -->
-<div class="modal-backdrop" id="modal-detail">
-  <div class="modal" style="max-width:520px;">
-    <div class="modal-header">
-      <h3 class="mono" id="detail-username">—</h3>
-      <button class="btn icon-only ghost sm" onclick="closeModal('modal-detail')">✕</button>
-    </div>
-    <div class="modal-sub" id="detail-created">—</div>
-
-    <div class="info-row">
-      <span class="k">لینک اشتراک (Subscription)</span>
-    </div>
-    <div class="flex gap-8 mt-8">
-      <input type="text" id="detail-sublink" class="mono" readonly style="flex:1;" />
-      <button class="btn icon-only sm" onclick="copyText(document.getElementById('detail-sublink').value)">{{ copy_icon() }}</button>
-    </div>
-    <div class="qr-box mt-16" id="detail-qr" title="اسکن با گوشی"></div>
-
-    <div class="flex gap-8 mt-16">
-      <a class="btn sm w-full" id="detail-dl-udp" href="#" target="_blank">{{ download_icon() }} کانفیگ UDP</a>
-      <a class="btn sm w-full" id="detail-dl-tcp" href="#" target="_blank">{{ download_icon() }} کانفیگ TCP</a>
-    </div>
-
-    <div class="progress-row mt-16">
-      <span>مصرف</span>
-      <span id="detail-usage-text">—</span>
-    </div>
-    <div class="bar" id="detail-usage-bar-wrap"><span id="detail-usage-bar" style="width:0%"></span></div>
-
-    <form id="edit-form" class="mt-16">
-      <div class="field">
-        <label>یادداشت</label>
-        <input type="text" name="note" id="edit-note" />
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>حجم مجاز جدید (GB) — خالی = بدون تغییر، ۰ = نامحدود</label>
-          <input type="number" name="data_limit_gb" id="edit-limit" min="0" step="0.5" />
-        </div>
-        <div class="field">
-          <label>تمدید اعتبار (روز از الان) — ۰ = نامحدود</label>
-          <input type="number" name="expire_days" id="edit-expire" min="0" step="1" />
-        </div>
-      </div>
-      <button type="submit" class="btn primary sm">ذخیره تغییرات</button>
-      <button type="button" class="btn ghost sm" id="detail-reset-usage">صفر کردن مصرف</button>
-    </form>
-
-    <div class="modal-actions mt-16" style="border-top:1px solid var(--border); padding-top:16px;">
-      <button class="btn sm" id="detail-toggle">{{ power_icon() }} فعال/غیرفعال</button>
-      <button class="btn sm" id="detail-regen">{{ refresh_icon() }} لینک جدید</button>
-      <button class="btn danger sm" id="detail-delete">{{ trash_icon() }} حذف کاربر</button>
-    </div>
+  <div class="users" id="users-list">
+    {% for _ in range(5) %}<div class="urow"><div class="who"><div class="skel" style="width:38px;height:38px;border-radius:12px"></div><div class="skel" style="width:120px;height:14px"></div></div></div>{% endfor %}
   </div>
 </div>
 {% endblock %}
 
+{% block overlays %}
+{% from "_icons.html" import icon %}
+<!-- create user -->
+<div class="modal" id="modal-create" role="dialog" aria-modal="true">
+  <div id="create-form-view">
+    <div class="modal-head">
+      <div>
+        <h3>کاربر جدید</h3>
+        <p>یک گواهی اختصاصی ساخته می‌شود که هم با UDP و هم با TCP کار می‌کند.</p>
+      </div>
+      <button class="btn icon sm ghost" data-close title="بستن">{{ icon("x") }}</button>
+    </div>
+    <form id="create-form" autocomplete="off">
+      <div class="field">
+        <label for="c-username">نام کاربری</label>
+        <div class="input-group">
+          <input id="c-username" name="username" type="text" dir="ltr" class="mono" placeholder="reza_phone" required
+                 pattern="[a-zA-Z][a-zA-Z0-9_\-]{2,31}" autofocus />
+          <button class="btn ghost" type="button" id="dice" title="نام تصادفی">{{ icon("dice") }}</button>
+        </div>
+        <div class="hint">حروف و عدد انگلیسی، <span class="mono">_</span> و <span class="mono">-</span> · ۳ تا ۳۲ کاراکتر</div>
+      </div>
+      <div class="field">
+        <label for="c-note">یادداشت <span class="muted">(اختیاری)</span></label>
+        <input id="c-note" name="note" type="text" placeholder="مثلا: مشتری تلگرام، گوشی رضا" maxlength="200" />
+      </div>
+      <label>پلن</label>
+      <div class="chips" id="presets" style="margin-bottom:14px">
+        <button type="button" class="chip" data-gb="10" data-days="30">۱۰ گیگ · ۳۰ روز</button>
+        <button type="button" class="chip" data-gb="30" data-days="30">۳۰ گیگ · ۳۰ روز</button>
+        <button type="button" class="chip" data-gb="50" data-days="30">۵۰ گیگ · ۳۰ روز</button>
+        <button type="button" class="chip" data-gb="100" data-days="90">۱۰۰ گیگ · ۹۰ روز</button>
+        <button type="button" class="chip" data-gb="" data-days="">نامحدود</button>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="c-gb">حجم (گیگابایت)</label>
+          <input id="c-gb" name="data_limit_gb" type="number" min="0" step="0.5" placeholder="نامحدود" />
+        </div>
+        <div class="field">
+          <label for="c-days">مدت اعتبار (روز)</label>
+          <input id="c-days" name="expire_days" type="number" min="1" step="1" placeholder="نامحدود" />
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="submit" class="btn primary" id="create-submit">{{ icon("check") }} ساخت کاربر</button>
+        <button type="button" class="btn ghost" data-close>انصراف</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="create-done-view" class="hide center">
+    <div class="success-mark">{{ icon("check") }}</div>
+    <h3 style="margin:0 0 4px; font-size:18px">کاربر <span class="mono" id="done-name"></span> آماده است</h3>
+    <p class="dim" style="margin:0 0 16px; font-size:13px">لینک اشتراک یا QR را برای کاربر بفرستید؛ دانلود کانفیگ و میزان مصرف همان‌جاست.</p>
+    <div class="qr-box" id="done-qr"></div>
+    <div class="input-group" style="margin-top:14px">
+      <input type="text" id="done-link" class="mono" readonly />
+      <button class="btn ghost" type="button" id="done-copy" title="کپی">{{ icon("copy") }}</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <a class="btn sm grow" id="done-udp" href="#">{{ icon("download") }} کانفیگ UDP</a>
+      <a class="btn sm grow" id="done-tcp" href="#">{{ icon("download") }} کانفیگ TCP</a>
+    </div>
+    <div class="modal-foot">
+      <button class="btn primary" id="done-another">{{ icon("user-plus") }} کاربر بعدی</button>
+      <button class="btn" id="done-open">جزئیات</button>
+    </div>
+  </div>
+</div>
+
+<!-- user details -->
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true"></aside>
+{% endblock %}
+
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="/static/js/users.js"></script>
+<script src="/static/vendor/qrcode.min.js?v={{ asset_v }}"></script>
+<script src="/static/vendor/chart.umd.min.js?v={{ asset_v }}"></script>
+<script>chartDefaults();</script>
+<script src="/static/js/users.js?v={{ asset_v }}"></script>
 {% endblock %}

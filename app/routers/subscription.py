@@ -23,16 +23,7 @@ def _get_user_or_404(token: str, db: Session) -> VpnUser:
 def subscription_page(token: str, request: Request, db: Session = Depends(get_db)):
     user = _get_user_or_404(token, db)
 
-    if user.revoked:
-        status_label = "revoked"
-    elif not user.enabled:
-        status_label = "disabled"
-    elif user.is_expired():
-        status_label = "expired"
-    elif user.is_over_quota():
-        status_label = "over_quota"
-    else:
-        status_label = "active"
+    status_label = user.status_label()
 
     usage_percent = None
     if user.data_limit_bytes:
@@ -48,6 +39,7 @@ def subscription_page(token: str, request: Request, db: Session = Depends(get_db
             "panel_title": settings.PANEL_TITLE,
             "udp_port": settings.OVPN_UDP_PORT,
             "tcp_port": settings.OVPN_TCP_PORT,
+            "days_left": user.days_left(),
         },
     )
 

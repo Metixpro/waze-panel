@@ -1,104 +1,100 @@
 {% extends "base.html" %}
 {% set active = "settings" %}
-{% block page_title %}تنظیمات{% endblock %}
-{% block page_sub %}پیکربندی آدرس سرور، عنوان پنل و رمز عبور ادمین{% endblock %}
+{% block title %}تنظیمات · {{ cfg.PANEL_TITLE }}{% endblock %}
 
 {% block content %}
-<div class="grid cols-2">
-  <div class="card">
-    <div class="card-title"><span>تنظیمات پنل و آدرس سرور</span></div>
-    <form id="settings-form">
-      <div class="field">
-        <label>آدرس/دامنه سرور (برای کانفیگ کاربران)</label>
-        <input type="text" name="server_address" class="mono" value="{{ server_address }}" required />
-        <div class="hint">این مقدار داخل فایل‌های .ovpn به عنوان remote قرار می‌گیرد.</div>
-      </div>
-      <div class="field">
-        <label>عنوان پنل</label>
-        <input type="text" name="panel_title" value="{{ panel_title }}" required />
-      </div>
-      <div class="field">
-        <label>آدرس پایه لینک اشتراک (اختیاری)</label>
-        <input type="text" name="subscription_base_url" class="mono" value="{{ subscription_base_url }}" placeholder="https://panel.example.com" />
-        <div class="hint">اگر پنل پشت دامنه/Nginx است اینجا وارد کنید تا لینک‌های ساب درست ساخته شوند.</div>
-      </div>
-      <button type="submit" class="btn primary">ذخیره تنظیمات</button>
-    </form>
-  </div>
-
-  <div class="card">
-    <div class="card-title"><span>تغییر رمز عبور ادمین</span></div>
-    <form id="password-form">
-      <div class="field">
-        <label>رمز عبور فعلی</label>
-        <input type="password" name="current_password" required />
-      </div>
-      <div class="field">
-        <label>رمز عبور جدید</label>
-        <input type="password" name="new_password" minlength="6" required />
-      </div>
-      <button type="submit" class="btn primary">تغییر رمز</button>
-    </form>
-  </div>
-
-  <div class="card">
-    <div class="card-title"><span>اطلاعات فنی (فقط خواندنی)</span></div>
-    <div class="info-list">
-      <div class="info-row"><span class="k">پورت پنل وب</span><span class="mono">{{ panel_port }}</span></div>
-      <div class="info-row"><span class="k">پورت OpenVPN UDP</span><span class="mono">{{ udp_port }}</span></div>
-      <div class="info-row"><span class="k">پورت OpenVPN TCP</span><span class="mono">{{ tcp_port }}</span></div>
-    </div>
-    <div class="hint mt-16">تغییر پورت‌های OpenVPN از طریق فایل‌های سرویس در /etc/openvpn/server انجام می‌شود و نیاز به ری‌استارت سرویس دارد.</div>
-  </div>
-  <div class="card">
-    <div class="card-title"><span>پشتیبان‌گیری</span></div>
-    <p class="text-dim" style="font-size:13px; line-height:1.9; margin:0 0 16px;">
-      یک فایل کامل شامل پایگاه‌داده، تنظیمات و <b>زیرساخت گواهی (CA)</b> دانلود می‌شود.
-      بدون CA، اگر سرور از دست برود همه‌ی کانفیگ‌های کاربران بی‌اعتبار می‌شوند؛ این فایل را جای امنی بیرون از سرور نگه دارید.
-    </p>
-    <a class="btn primary" href="/api/settings/backup">دانلود فایل پشتیبان</a>
-    <div class="hint mt-16">بازگردانی روی سرور جدید: <span class="mono">waze-panel restore &lt;file&gt;</span></div>
+{% from "_icons.html" import icon %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">تنظیمات</h1>
+    <div class="page-sub">آدرس سرور، امنیت، ظاهر و پشتیبان‌گیری</div>
   </div>
 </div>
 
+<div class="grid cols-2">
+  <form class="card" id="settings-form" autocomplete="off">
+    <div class="card-head"><div class="card-title">{{ icon("globe") }} آدرس و برند</div></div>
+    <div class="field">
+      <label for="s-addr">آدرس سرور در کانفیگ کاربران</label>
+      <input id="s-addr" type="text" name="server_address" class="mono" dir="ltr" value="{{ server_address }}" required />
+      <div class="hint">IP یا دامنه‌ای که داخل فایل‌های .ovpn به‌عنوان <span class="mono">remote</span> قرار می‌گیرد. کاربران با دانلود دوباره از لینک اشتراک، آدرس جدید را می‌گیرند.</div>
+    </div>
+    <div class="field">
+      <label for="s-title">عنوان پنل</label>
+      <input id="s-title" type="text" name="panel_title" value="{{ panel_title }}" maxlength="40" required />
+    </div>
+    <div class="field">
+      <label for="s-base">آدرس پایه‌ی لینک‌های اشتراک <span class="muted">(اختیاری)</span></label>
+      <input id="s-base" type="text" name="subscription_base_url" class="mono" dir="ltr" value="{{ subscription_base_url }}" placeholder="https://panel.example.com" />
+      <div class="hint">اگر پنل پشت دامنه یا Nginx است، وارد کنید تا لینک‌ها با همان آدرس ساخته شوند.</div>
+    </div>
+    <button type="submit" class="btn primary">{{ icon("check") }} ذخیره</button>
+  </form>
+
+  <form class="card" id="password-form" autocomplete="off">
+    <div class="card-head"><div class="card-title">{{ icon("key") }} امنیت حساب</div></div>
+    <div class="field">
+      <label for="p-cur">رمز عبور فعلی</label>
+      <input id="p-cur" type="password" name="current_password" autocomplete="current-password" dir="ltr" required />
+    </div>
+    <div class="field">
+      <label for="p-new">رمز عبور جدید</label>
+      <div class="input-group">
+        <input id="p-new" type="password" name="new_password" autocomplete="new-password" dir="ltr" minlength="6" required />
+        <button class="btn ghost" type="button" id="p-show" title="نمایش">{{ icon("eye") }}</button>
+      </div>
+      <div class="bar" style="margin-top:10px"><span id="p-meter" style="width:0%"></span></div>
+      <div class="hint" id="p-hint">حداقل ۶ کاراکتر؛ ترکیب حروف بزرگ و کوچک، عدد و نماد امن‌تر است.</div>
+    </div>
+    <button type="submit" class="btn primary">{{ icon("shield-check") }} تغییر رمز</button>
+    <div class="divider"></div>
+    <div class="setting-row">
+      <div><div class="t">محافظت در برابر حدس رمز</div><div class="s">بعد از ۵ تلاش ناموفق، آن آی‌پی ۱۰ دقیقه مسدود می‌شود.</div></div>
+      <span class="badge active"><i></i>فعال</span>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="card-head"><div class="card-title">{{ icon("palette") }} ظاهر</div></div>
+    <div class="setting-row">
+      <div><div class="t">تم پنل</div><div class="s">روی همین مرورگر ذخیره می‌شود.</div></div>
+      <div class="seg" id="theme-seg">
+        <button data-theme-set="dark">{{ icon("moon") }} تاریک</button>
+        <button data-theme-set="light">{{ icon("sun") }} روشن</button>
+        <button data-theme-set="auto">خودکار</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div class="card-title">{{ icon("archive") }} پشتیبان‌گیری</div></div>
+    <p class="dim" style="font-size:13px; line-height:1.9; margin:0 0 16px">
+      یک فایل کامل شامل پایگاه‌داده، تنظیمات و <b>زیرساخت گواهی (CA)</b>. بدون CA، اگر سرور از دست برود همه‌ی کانفیگ‌های کاربران بی‌اعتبار می‌شوند؛ این فایل را بیرون از سرور نگه دارید.
+    </p>
+    <a class="btn primary" href="/api/settings/backup">{{ icon("download") }} دانلود فایل پشتیبان</a>
+    <div class="hint" style="margin-top:12px">بازگردانی روی سرور جدید (بعد از نصب پنل): <span class="mono">waze-panel restore &lt;file&gt;</span></div>
+  </div>
+
+  <div class="card span-2">
+    <div class="card-head"><div class="card-title">{{ icon("server") }} اطلاعات فنی</div></div>
+    <div class="kv" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr))">
+      <div><div class="k">پورت پنل وب</div><div class="v num">{{ panel_port }}</div></div>
+      <div><div class="k">OpenVPN UDP</div><div class="v num">{{ udp_port }}</div></div>
+      <div><div class="k">OpenVPN TCP</div><div class="v num">{{ tcp_port }}</div></div>
+      <div><div class="k">رمزنگاری</div><div class="v mono">AES-256-GCM · tls-crypt</div></div>
+    </div>
+    <div class="divider"></div>
+    <div class="section-title">{{ icon("cpu") }} مدیریت از ترمینال سرور</div>
+    <div class="kv" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr))">
+      <div><div class="k">منوی مدیریت</div><div class="v mono">waze-panel</div></div>
+      <div><div class="k">وضعیت سرویس‌ها</div><div class="v mono">waze-panel status</div></div>
+      <div><div class="k">به‌روزرسانی</div><div class="v mono">waze-panel update</div></div>
+      <div><div class="k">بازیابی رمز ادمین</div><div class="v mono">waze-panel reset-password</div></div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
-<script>
-document.getElementById("settings-form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const fd = new FormData(ev.target);
-  try {
-    await api("/api/settings", {
-      method: "POST",
-      body: {
-        server_address: fd.get("server_address"),
-        panel_title: fd.get("panel_title"),
-        subscription_base_url: fd.get("subscription_base_url"),
-      },
-    });
-    toast("تنظیمات ذخیره شد.");
-  } catch (e) {
-    toast(e.message, "error");
-  }
-});
-
-document.getElementById("password-form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const fd = new FormData(ev.target);
-  try {
-    await api("/api/settings/password", {
-      method: "POST",
-      body: {
-        current_password: fd.get("current_password"),
-        new_password: fd.get("new_password"),
-      },
-    });
-    toast("رمز عبور تغییر کرد.");
-    ev.target.reset();
-  } catch (e) {
-    toast(e.message, "error");
-  }
-});
-</script>
+<script src="/static/js/settings.js?v={{ asset_v }}"></script>
 {% endblock %}

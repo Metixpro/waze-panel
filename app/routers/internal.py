@@ -56,15 +56,7 @@ def hook_connect(
     if user is None:
         return {"allow": False, "reason": "unknown_user"}
     if not user.is_usable():
-        if user.revoked:
-            reason = "revoked"
-        elif not user.enabled:
-            reason = "disabled"
-        elif user.is_expired():
-            reason = "expired"
-        else:
-            reason = "over_quota"
-        return {"allow": False, "reason": reason}
+        return {"allow": False, "reason": user.status_label()}
 
     return {"allow": True}
 

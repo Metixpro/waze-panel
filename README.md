@@ -1,177 +1,163 @@
-# 🌊 Waze Panel
+# ⚡ Waze Panel
 
-پنل مدیریت OpenVPN — نصب یک‌خطی، داشبورد خفن، ساخت کاربر با پروتکل UDP/TCP همزمان،
-لینک اشتراک (Subscription) اختصاصی برای دانلود کانفیگ و پایش مصرف، و اجرای واقعی
-روی هستهٔ اصلی OpenVPN (نه شبیه‌سازی).
+پنل مدیریت OpenVPN با نصب یک‌دستوری، داشبورد زنده، کاربران با پروتکل **UDP و TCP همزمان**،
+لینک اشتراک اختصاصی و کنترل لحظه‌ای حجم و انقضا — روی هسته‌ی اصلی OpenVPN.
 
 <p>
   <img alt="license" src="https://img.shields.io/badge/license-MIT-7c5cff">
-  <img alt="python" src="https://img.shields.io/badge/python-3.9%2B-35d0ff">
-  <img alt="stack" src="https://img.shields.io/badge/stack-FastAPI%20%2B%20OpenVPN-33d69f">
+  <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-35d0ff">
+  <img alt="openvpn" src="https://img.shields.io/badge/OpenVPN-2.5%2B-33d69f">
+  <img alt="e2e" src="https://img.shields.io/badge/e2e-15%2F15%20passing-33d69f">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/dashboard-dark.png" alt="داشبورد" width="100%">
 </p>
 
 ---
 
 ## ✨ امکانات
 
-- **نصب خودکار با یک دستور** روی سرور اوبونتو/دبیان تمیز: نصب OpenVPN و easy-rsa،
-  ساخت CA و گواهی سرور، بالا آوردن **دو سرویس همزمان OpenVPN** (یکی UDP، یکی TCP)،
-  تنظیم NAT/فایروال و فوروارد شدن ترافیک، و نصب پنل به‌عنوان سرویس systemd.
-- **پنل ادمین با یوزر/پس** — ورود امن با سشن، تغییر رمز از داخل پنل.
-- **داشبورد زنده**: تعداد کاربران، کاربران آنلاین لحظه‌ای، مصرف امروز/کل، نمودار
-  ۱۴ روز اخیر، وضعیت CPU/RAM/دیسک/آپتایم سرور، وضعیت هر دو سرویس OpenVPN.
-- **مدیریت کاربران**: ساخت کاربر با یک کلیک (گواهی TLS واقعی صادر می‌شود)، تعیین
-  سقف حجم و تاریخ انقضا، فعال/غیرفعال‌سازی آنی (حتی وسط اتصال قطع می‌شود)،
-  ساخت مجدد لینک اشتراک، حذف کامل (باطل کردن گواهی + پاکسازی).
-- **هر کاربر همزمان UDP و TCP دارد** — یک گواهی، دو فایل کانفیگ (`.ovpn`)، برای
-  دور زدن فیلترینگ وقتی یک پروتکل مسدود است.
-- **لینک اشتراک عمومی** (`/sub/<token>`): صفحه‌ای شیک که کاربر نهایی بدون نیاز به
-  لاگین، وضعیت اکانت، درصد مصرف و دکمه دانلود کانفیگ UDP/TCP را می‌بیند.
-- **پایش مصرف واقعی**: با hook های `client-connect`/`client-disconnect` OpenVPN +
-  یک وظیفهٔ پس‌زمینه که هر ۲۰ ثانیه از رابط مدیریتی OpenVPN می‌خواند، مصرف هر
-  کاربر لحظه‌به‌لحظه ثبت می‌شود و با اتمام سقف حجم، اتصال کاربر فورا قطع می‌شود.
-- **HTTPS رایگان اختیاری** با Nginx + Let's Encrypt، فقط با دادن یک دامنه به نصب‌کننده.
+**سرور و OpenVPN**
+- نصب خودکار با یک دستور: OpenVPN و easy-rsa، CA و گواهی سرور، **دو سرویس همزمان** (UDP و TCP)، NAT و فایروال، و پنل به‌صورت سرویس systemd.
+- هر کاربر یک **گواهی TLS واقعی** دارد که هم روی UDP و هم TCP کار می‌کند (AES-256-GCM + tls-crypt).
+- **کنترل لحظه‌ای**: اتمام حجم، انقضا یا غیرفعال‌سازی، اتصال را **وسط کار** قطع می‌کند (با پیام HALT، تا کلاینت پشت سر هم تلاش نکند).
+- حذف کاربر گواهی را **باطل** می‌کند (CRL) — رد شدن در همان مرحله‌ی TLS.
+- گواهی‌ها و CRL با اعتبار ۱۰ ساله، به‌همراه امضای مجدد روزانه‌ی CRL.
 
-## 🚀 نصب سریع
+**پنل**
+- داشبورد زنده: آنلاین‌ها با پروتکل و IP، مصرف امروز با مقایسه‌ی دیروز، نمودار ۱۴ روزه با تاریخ شمسی، سلامت سرور (CPU/RAM/دیسک)، وضعیت کاربران، پرمصرف‌های امروز و لیست **نیاز به تمدید** با تمدید یک‌کلیکی.
+- مدیریت کاربران با فیلتر (آنلاین، رو به اتمام، منقضی، …)، جستجو، مرتب‌سازی و کشوی جزئیات: حلقه‌ی مصرف، نمودار مصرف هر کاربر، **تمدید سریع** (+۳۰ روز، +۱۰ گیگ، …)، لینک اشتراک با QR.
+- ساخت کاربر با پلن‌های آماده و صفحه‌ی «آماده است» برای اشتراک‌گذاری فوری لینک و QR.
+- تم تاریک و روشن، فارسی کامل با اعداد فارسی و تاریخ شمسی، طراحی مخصوص موبایل (ناوبری پایین صفحه).
+- **بدون وابستگی به CDN**: فونت و کتابخانه‌ها روی خود سرور هستند؛ در شبکه‌هایی که CDNها فیلتر یا کند هستند هم کامل کار می‌کند.
+- پشتیبان‌گیری کامل (دیتابیس + تنظیمات + CA) از داخل پنل.
 
-روی یک سرور Ubuntu 20.04/22.04/24.04 یا Debian 11/12 (تمیز و با دسترسی root):
+**لینک اشتراک (برای کاربر نهایی)**
+- بدون لاگین: درصد مصرف، باقیمانده، روزهای اعتبار و دانلود کانفیگ UDP/TCP.
+- راهنمای اتصال مخصوص اندروید، آیفون، ویندوز و مک (تشخیص خودکار دستگاه).
+- QR برای باز کردن همان صفحه روی دستگاه دیگر.
+
+## 📸 تصاویر
+
+| | |
+|---|---|
+| ![کاربران](docs/screenshots/users.png) | ![جزئیات کاربر](docs/screenshots/user-drawer.png) |
+| ![ساخت کاربر](docs/screenshots/create-user.png) | ![داشبورد روشن](docs/screenshots/dashboard-light.png) |
+
+<p align="center">
+  <img src="docs/screenshots/users-phone.png" alt="موبایل" width="260">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/subscription-phone.png" alt="صفحه اشتراک" width="260">
+</p>
+
+## 🚀 نصب
+
+روی سرور **Ubuntu 22.04 / 24.04** یا **Debian 12** با دسترسی root:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Metixpro/waze-panel/main/install.sh -o install.sh
 sudo bash install.sh
 ```
 
-نصب‌کننده به‌صورت تعاملی چند سؤال می‌پرسد (آدرس سرور، پورت‌ها، یوزر/پس ادمین،
-دامنه در صورت تمایل) و در پایان آدرس پنل و اطلاعات ورود را نمایش می‌دهد.
+نصب‌کننده آدرس سرور، یوزرنیم ادمین، پورت‌ها (با بررسی اشغال نبودن) و در صورت تمایل دامنه را می‌پرسد و در پایان آدرس پنل و رمز را نشان می‌دهد. نصب بدون سؤال: `sudo bash install.sh --yes`
 
-برای نصب کاملا خودکار (بدون هیچ سؤالی) با مقادیر پیش‌فرض:
-
-```bash
-sudo bash install.sh --yes
-```
-
-### فلگ‌های نصب
+> پنل به Python 3.10 یا جدیدتر نیاز دارد؛ روی Ubuntu 20.04 و Debian 11 نصب‌کننده همان ابتدا با پیام واضح متوقف می‌شود.
 
 | فلگ | توضیح | پیش‌فرض |
 |---|---|---|
-| `--yes` | بدون سؤال، همه‌چیز خودکار | - |
-| `--panel-port PORT` | پورت وب پنل | `8000` |
+| `--yes` | بدون سؤال | - |
+| `--panel-port PORT` | پورت پنل | `8000` |
 | `--udp-port PORT` | پورت OpenVPN روی UDP | `1194` |
-| `--tcp-port PORT` | پورت OpenVPN روی TCP | `443` (یا `8443` اگر دامنه بدهید) |
+| `--tcp-port PORT` | پورت OpenVPN روی TCP | `443` (یا `8443` با دامنه) |
 | `--admin-user NAME` | یوزرنیم ادمین | `admin` |
-| `--admin-pass PASS` | پسورد ادمین | تصادفی |
-| `--server-address ADDR` | آی‌پی/دامنه‌ای که در کانفیگ کاربران قرار می‌گیرد | تشخیص خودکار آی‌پی عمومی |
-| `--domain example.com` | راه‌اندازی Nginx + SSL رایگان روی این دامنه برای پنل | - |
-| `--no-nginx` | هرگز Nginx نصب نکن | - |
+| `--admin-pass PASS` | رمز ادمین | تصادفی (در به‌روزرسانی بدون تغییر) |
+| `--server-address ADDR` | آی‌پی/دامنه‌ی داخل کانفیگ‌ها | تشخیص خودکار |
+| `--domain example.com` | Nginx + HTTPS رایگان (Let's Encrypt) برای پنل | - |
+| `--no-nginx` | هرگز Nginx نصب نشود | - |
 
-> نکته: چون اسکریپت هنگام اجرا سؤال می‌پرسد، بهتر است اول دانلودش کنید و بعد
-> اجرا کنید (بالا)، نه به شکل `curl ... | bash` که ورودی ترمینال را می‌گیرد.
+## 🧰 مدیریت از ترمینال
 
-## 🧭 بعد از نصب
+بعد از نصب، دستور `waze-panel` روی سرور در دسترس است:
 
-1. به آدرس چاپ‌شده در پایان نصب بروید (مثلا `http://SERVER_IP:8000`) و با یوزر/پس
-   نمایش داده‌شده وارد شوید.
-2. از منوی «کاربران» → «کاربر جدید»، یک کاربر با نام دلخواه، سقف حجم (اختیاری) و
-   تاریخ انقضا (اختیاری) بسازید.
-3. روی کاربر کلیک کنید تا **لینک اشتراک** آن را ببینید/کپی کنید و برای مشتری
-   بفرستید. با باز کردن آن لینک در مرورگر، دو دکمه دانلود کانفیگ UDP و TCP و
-   میزان مصرف نمایش داده می‌شود.
-4. فایل `.ovpn` دانلودشده را در اپ رسمی **OpenVPN Connect** (اندروید/iOS/ویندوز/مک/لینوکس)
-   باز کنید.
+```bash
+waze-panel                   # منوی تعاملی
+waze-panel status            # وضعیت سرویس‌ها، تعداد کاربران، اعتبار CRL
+waze-panel restart
+waze-panel logs [panel|udp|tcp]
+waze-panel reset-password    # فراموشی رمز ادمین
+waze-panel backup [dir]      # پشتیبان کامل (دیتابیس + تنظیمات + CA)
+waze-panel restore <file>    # بازگردانی، مثلا روی سرور جدید
+waze-panel update            # به‌روزرسانی به آخرین نسخه
+waze-panel uninstall
+```
+
+**به‌روزرسانی امن است:** اجرای دوباره‌ی `install.sh` (یا `waze-panel update`) پورت‌ها، آدرس، کلیدها، کاربران، گواهی‌ها و رمز ادمین را نگه می‌دارد و فقط کد و سرویس‌ها را تازه می‌کند.
 
 ## 🏗️ معماری
 
 ```
-                       ┌───────────────────────┐
-      کاربر مرورگر ───▶│   FastAPI (Waze Panel) │──▶ SQLite (کاربران/مصرف/تنظیمات)
-                       │  systemd: waze-panel   │
-                       └──────────┬─────────────┘
-                                  │ management-interface (127.0.0.1)
-                    ┌─────────────┼─────────────┐
-                    ▼                           ▼
-         OpenVPN instance UDP          OpenVPN instance TCP
-         systemd: openvpn-server@waze-udp     @waze-tcp
-                    │                           │
-        client-connect/disconnect hooks (پایتون، stdlib)
-                    │                           │
-                    └─────────────┬─────────────┘
-                                  ▼
-                      /internal/hooks/* (فقط 127.0.0.1،
-                      با توکن مشترک محافظت می‌شود)
+ مرورگر ادمین / کاربر ──▶ FastAPI (waze-panel.service) ──▶ SQLite
+                                   │  management interface (127.0.0.1)
+                    ┌──────────────┴──────────────┐
+            OpenVPN UDP                      OpenVPN TCP
+      (openvpn-server@waze-udp)        (openvpn-server@waze-tcp)
+                    │  client-connect / client-disconnect (nobody:nogroup)
+                    └──────────────┬──────────────┘
+                                   ▼
+                 /internal/hooks/*  — فقط loopback + توکن (hook.env)
 ```
 
-- **دو سرویس مجزای OpenVPN** روی زیرشبکه‌های `10.8.0.0/24` (UDP) و
-  `10.9.0.0/24` (TCP) با یک CA/گواهی سرور مشترک بالا می‌آیند.
-- هر کاربر پنل = یک **گواهی TLS واقعی** ساخته‌شده با `easy-rsa` (نه یوزر/پس ساده)،
-  قابل استفاده روی هر دو نمونه.
-- **اجازهٔ اتصال** با اسکریپت `client-connect` بررسی می‌شود (فعال/غیرفعال، منقضی،
-  اتمام حجم) — رد در سطح OpenVPN، نه بعد از وصل شدن.
-- **مصرف** از دو مسیر جمع می‌شود: نمونه‌برداری دوره‌ای از رابط مدیریتی OpenVPN
-  (برای اتصال‌های طولانی و اِعمال آنیِ قطعِ حجم) + اسکریپت `client-disconnect`
-  (برای دقتِ نهاییِ هر سشن).
-- **حذف/غیرفعال‌سازی** کاربر هم گواهی را باطل می‌کند (CRL) و هم بلافاصله سشن‌های
-  باز او را روی هر دو سرویس قطع می‌کند.
+- **مجوز اتصال** در هوک `client-connect` بررسی می‌شود (فعال، منقضی، حجم) و رد شدن در سطح خود OpenVPN است.
+- **حسابداری مصرف** از دو مسیر: خواندن دوره‌ای رابط مدیریتی (برای اتصال‌های طولانی و قطع آنی) و هوک `client-disconnect` (برای دقت نهایی هر سشن)، با قفل و شناسه‌ی سشن تا چیزی دوبار شمرده نشود.
+- هوک‌ها بعد از افت دسترسی OpenVPN با کاربر `nobody` اجرا می‌شوند؛ به همین دلیل فایل جداگانه‌ی `hook.env` (فقط پورت و توکن، `root:nogroup 0640`) دارند.
+
+## 🔐 امنیت
+
+- ورود ادمین با محافظت در برابر حدس رمز (۵ تلاش ناموفق = ۱۰ دقیقه مسدودی برای آن IP).
+- با `--domain` پنل فقط روی `127.0.0.1` گوش می‌دهد و از طریق Nginx + HTTPS در دسترس است؛ بدون دامنه، پنل روی HTTP است — حتما رمز قوی بگذارید.
+- API داخلی هوک‌ها فقط به درخواست مستقیم از loopback جواب می‌دهد و در Nginx هم بسته است.
+- دیتابیس و `panel.env` فقط برای root قابل خواندن‌اند (`0600`).
+- لینک اشتراک بدون لاگین باز می‌شود؛ اگر لو رفت، از «لینک جدید» در جزئیات کاربر استفاده کنید.
+
+## 🧪 تست
+
+`tests/e2e.sh` روی یک نصب واقعی، کلاینت واقعی OpenVPN را از یک network namespace جدا به هر دو سرویس وصل می‌کند و ۱۵ مورد را بررسی می‌کند: اجازه‌ی اتصال، آنلاین شدن، حسابداری ترافیک بدون شمارش دوباره، قطع وسط اتصال با اتمام حجم، رد اتصال مجدد، باطل شدن گواهی پس از حذف و اعتبار CRL.
+
+```bash
+sudo bash tests/e2e.sh          # KEEP=1 برای نگه داشتن لاگ‌ها
+```
 
 ## 📂 ساختار پروژه
 
 ```
 app/
-  main.py              نقطهٔ ورود FastAPI
-  config.py            تنظیمات (از /etc/waze-panel/panel.env خوانده می‌شود)
-  models.py            مدل‌های SQLAlchemy
-  cli.py               دستورات مدیریتی (init-db, create-admin, ...)
-  openvpn/
-    certs.py           رابط easy-rsa (صدور/ابطال گواهی)
-    templates.py       ساخت فایل .ovpn
-    mgmt.py             کلاینت رابط مدیریتی OpenVPN
-    scheduler.py        وظیفهٔ پس‌زمینهٔ حسابداری ترافیک
-  routers/             auth, dashboard, users, subscription, internal, settings
-  templates/           صفحات Jinja2 (فارسی/RTL)
-  static/              CSS و JS پنل
-scripts/
-  client-connect-*.py / client-disconnect-*.py   هوک‌های OpenVPN
-  openvpn-server-*.conf.tmpl                      قالب کانفیگ سرور
-  waze-panel*.service.tmpl                        واحدهای systemd
-  nginx-waze-panel.conf.tmpl                       قالب Nginx
-install.sh / uninstall.sh
+  main.py  config.py  models.py  cli.py  backup.py
+  openvpn/   certs.py (easy-rsa) · templates.py (.ovpn) · mgmt.py · scheduler.py
+  routers/   auth · dashboard · users · subscription · internal · settings
+  templates/ صفحات Jinja2 (RTL)       static/  css · js · vendor (فونت و کتابخانه‌های محلی)
+scripts/     هوک‌های OpenVPN · قالب کانفیگ‌ها و systemd · waze-panel-cli.sh
+tests/e2e.sh
+install.sh · uninstall.sh
 ```
-
-## 🔐 نکات امنیتی
-
-- پنل به‌طور پیش‌فرض روی `0.0.0.0:PANEL_PORT` با HTTP ساده بالا می‌آید. برای
-  محیط واقعی حتما یکی از این دو کار را انجام دهید:
-  - نصب را با `--domain example.com` اجرا کنید تا Nginx + HTTPS رایگان فعال شود، یا
-  - پورت پنل را پشت فایروال/VPN دیگری محدود کنید و فقط از IP قابل‌اعتماد باز بگذارید.
-- رمز عبور ادمین را بلافاصله بعد از اولین ورود از صفحهٔ «تنظیمات» عوض کنید.
-- لینک اشتراک هر کاربر (`/sub/<token>`) بدون لاگین قابل مشاهده است — فقط برای
-  همان کاربر بفرستید؛ در صورت لو رفتن، از دکمهٔ «لینک جدید» برای باطل کردن لینک
-  قبلی استفاده کنید.
-- ارتباط هوک‌های OpenVPN با پنل فقط روی `127.0.0.1` و با یک توکن تصادفی محافظت
-  می‌شود که در `/etc/waze-panel/panel.env` ذخیره است.
-
-## 🗑️ حذف نصب
-
-```bash
-sudo bash /opt/waze-panel/uninstall.sh
-```
-
-با `--purge` همه‌چیز (شامل PKI و کانفیگ کاربران) بدون سؤال حذف می‌شود.
 
 ## 🛠️ توسعه محلی
 
 ```bash
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-export DATA_DIR=$(pwd)/.devdata DB_PATH=$(pwd)/.devdata/dev.db
-mkdir -p .devdata
-python -m app.cli init-db
+python3 -m venv venv && . venv/bin/activate && pip install -r requirements.txt
+export DATA_DIR=$PWD/.devdata DB_PATH=$PWD/.devdata/dev.db && mkdir -p .devdata
 python -m app.cli create-admin --username admin --password admin1234
 uvicorn app.main:app --reload
 ```
 
-توجه: بخش‌های مربوط به OpenVPN واقعی (صدور گواهی، رابط مدیریتی) در محیط توسعه
-بدون نصب OpenVPN/easy-rsa کار نمی‌کنند؛ برای تست کامل از یک سرور واقعی استفاده کنید.
+ساخت گواهی و آمار زنده به OpenVPN و easy-rsa نیاز دارند؛ برای تست کامل از `tests/e2e.sh` روی یک سرور استفاده کنید.
+
+## 🗑️ حذف
+
+```bash
+sudo waze-panel uninstall        # یا: sudo bash /opt/waze-panel/uninstall.sh --purge
+```
 
 ## 📄 مجوز
 
-MIT — فایل [LICENSE](./LICENSE) را ببینید.
+MIT — [LICENSE](./LICENSE). فونت وزیرمتن تحت SIL OFL و کتابخانه‌های داخل `app/static/vendor` تحت MIT هستند ([جزئیات](app/static/vendor/LICENSES.md)).

@@ -44,6 +44,10 @@ class UpdateUserRequest(BaseModel):
     expire_days: int | None = Field(default=None, ge=0)
     clear_limit: bool = False
     clear_expiry: bool = False
+    # one-tap renewals: extend from the later of now / current expiry, and
+    # top up the quota on top of whatever is left
+    add_days: int | None = Field(default=None, ge=1, le=3650)
+    add_gb: float | None = Field(default=None, gt=0, le=100000)
 
 
 def _require_admin(admin: AdminUser | None):
@@ -52,29 +56,33 @@ def _require_admin(admin: AdminUser | None):
     return admin
 
 
-def _serialize(user: VpnUser, online_usernames: set[str]) -> dict:
-    if user.revoked:
-        status_label = "revoked"
-    elif not user.enabled:
-        status_label = "disabled"
-    elif user.is_expired():
-        status_label = "expired"
-    elif user.is_over_quota():
-        status_label = "over_quota"
-    else:
-        status_label = "active"
+def _online_map() -> dict[str, list[str]]:
+    from app.openvpn.scheduler import get_online_sessions
 
+    protos: dict[str, list[str]] = {}
+    for sess in get_online_sessions():
+        protos.setdefault(sess["username"], []).append(sess["proto"])
+    return protos
+
+
+def _serialize(user: VpnUser, online: dict[str, list[str]] | None = None) -> dict:
+    if online is None:
+        online = _online_map()
+    protos = sorted(online.get(user.username, []))
     return {
         "id": user.id,
         "username": user.username,
         "note": user.note,
         "enabled": user.enabled,
         "revoked": user.revoked,
-        "status": status_label,
-        "online": user.username in online_usernames,
+        "status": user.status_label(),
+        "ending_soon": user.is_ending_soon(),
+        "online": bool(protos),
+        "online_protos": protos,
         "data_limit_bytes": user.data_limit_bytes,
         "data_used_bytes": user.data_used_bytes,
         "expire_at": _iso(user.expire_at),
+        "days_left": user.days_left(),
         "created_at": _iso(user.created_at),
         "last_connected_at": _iso(user.last_connected_at),
         "last_ip": user.last_ip,
@@ -96,9 +104,7 @@ def users_page(request: Request, admin: AdminUser | None = Depends(get_optional_
 @router.get("/api/users")
 def list_users(admin: AdminUser | None = Depends(get_optional_admin), db: Session = Depends(get_db)):
     _require_admin(admin)
-    from app.openvpn.scheduler import get_online_usernames
-
-    online = get_online_usernames()
+    online = _online_map()
     users = db.query(VpnUser).order_by(VpnUser.created_at.desc()).all()
     return [_serialize(u, online) for u in users]
 
@@ -142,9 +148,7 @@ def create_user(
     db.commit()
     db.refresh(user)
 
-    from app.openvpn.scheduler import get_online_usernames
-
-    return _serialize(user, get_online_usernames())
+    return _serialize(user)
 
 
 @router.get("/api/users/{user_id}")
@@ -158,9 +162,7 @@ def get_user(
     if not user:
         raise HTTPException(status_code=404, detail="not found")
 
-    from app.openvpn.scheduler import get_online_usernames
-
-    data = _serialize(user, get_online_usernames())
+    data = _serialize(user)
 
     since = datetime.date.today() - datetime.timedelta(days=13)
     rows = (
@@ -170,13 +172,9 @@ def get_user(
         .all()
     )
     by_date = {r.date.isoformat(): r.bytes_total for r in rows}
-    labels, values = [], []
-    for i in range(14):
-        d = since + datetime.timedelta(days=i)
-        labels.append(d.strftime("%m-%d"))
-        values.append(by_date.get(d.isoformat(), 0))
-    data["chart_labels"] = labels
-    data["chart_values"] = values
+    dates = [(since + datetime.timedelta(days=i)).isoformat() for i in range(14)]
+    data["chart_dates"] = dates
+    data["chart_values"] = [by_date.get(d, 0) for d in dates]
     return data
 
 
@@ -208,11 +206,17 @@ def update_user(
             else None
         )
 
+    if payload.add_days:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        current = user.expire_at.replace(tzinfo=datetime.timezone.utc) if user.expire_at else None
+        base = current if current and current > now else now
+        user.expire_at = base + datetime.timedelta(days=payload.add_days)
+    if payload.add_gb and user.data_limit_bytes is not None:
+        user.data_limit_bytes += int(payload.add_gb * (1024**3))
+
     db.commit()
     db.refresh(user)
-    from app.openvpn.scheduler import get_online_usernames
-
-    return _serialize(user, get_online_usernames())
+    return _serialize(user)
 
 
 def _kill_everywhere(username: str) -> None:
@@ -237,9 +241,7 @@ def toggle_user(
     if not user.enabled:
         _kill_everywhere(user.username)
 
-    from app.openvpn.scheduler import get_online_usernames
-
-    return _serialize(user, get_online_usernames())
+    return _serialize(user)
 
 
 @router.post("/api/users/{user_id}/reset_usage")
@@ -255,9 +257,7 @@ def reset_usage(
     user.data_used_bytes = 0
     db.commit()
     db.refresh(user)
-    from app.openvpn.scheduler import get_online_usernames
-
-    return _serialize(user, get_online_usernames())
+    return _serialize(user)
 
 
 @router.post("/api/users/{user_id}/regenerate_token")
@@ -273,9 +273,7 @@ def regenerate_token(
     user.regenerate_token()
     db.commit()
     db.refresh(user)
-    from app.openvpn.scheduler import get_online_usernames
-
-    return _serialize(user, get_online_usernames())
+    return _serialize(user)
 
 
 @router.delete("/api/users/{user_id}")
