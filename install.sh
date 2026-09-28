@@ -34,9 +34,9 @@ C_YELLOW="\033[1;33m"; C_RED="\033[1;31m"; C_BOLD="\033[1m"
 
 log_step()  { echo -e "\n${C_BLUE}==>${C_RESET} ${C_BOLD}$*${C_RESET}"; }
 log_info()  { echo -e "    $*"; }
-log_ok()    { echo -e "    ${C_GREEN}✓${C_RESET} $*"; }
+log_ok()    { echo -e "    ${C_GREEN}OK${C_RESET} $*"; }
 log_warn()  { echo -e "    ${C_YELLOW}!${C_RESET} $*"; }
-log_err()   { echo -e "    ${C_RED}✗${C_RESET} $*" >&2; }
+log_err()   { echo -e "    ${C_RED}FAIL${C_RESET} $*" >&2; }
 die()       { log_err "$*"; exit 1; }
 
 # ============================================================
@@ -121,16 +121,16 @@ ask_yn() {
 # ============================================================
 # Pre-flight checks
 # ============================================================
-[ "$(id -u)" -eq 0 ] || die "این اسکریپت باید با دسترسی root اجرا شود (sudo bash install.sh)"
+[ "$(id -u)" -eq 0 ] || die "This script must be run as root (sudo bash install.sh)"
 
 if ! command -v apt-get >/dev/null 2>&1; then
-  die "این نصب‌کننده فقط از توزیع‌های مبتنی بر Debian/Ubuntu (apt) پشتیبانی می‌کند."
+  die "This installer only supports Debian/Ubuntu based distros (apt)."
 fi
 
 if [ -f /etc/waze-panel/panel.env ]; then
-  log_warn "به نظر می‌رسد Waze Panel قبلا نصب شده است (/etc/waze-panel/panel.env موجود است)."
-  cont=$(ask_yn "آیا می‌خواهید نصب را دوباره اجرا و تنظیمات را بازنویسی کنید؟" "n")
-  [ "$cont" = "y" ] || die "نصب لغو شد."
+  log_warn "Waze Panel appears to be already installed (/etc/waze-panel/panel.env exists)."
+  cont=$(ask_yn "Re-run the installer and overwrite the existing configuration?" "n")
+  [ "$cont" = "y" ] || die "Installation cancelled."
 fi
 
 echo -e "${C_BOLD}"
@@ -142,39 +142,39 @@ cat <<'BANNER'
     \  / (_| |/ /  __/\ V  /| |  | (_| | | | |  __/| |
      \/ \__,_/___\___| \_/ |_|   \__,_|_| |_|\___||_|
 
-        OpenVPN admin panel — installer
+        OpenVPN admin panel - installer
 BANNER
 echo -e "${C_RESET}"
 
 # ============================================================
 # Gather configuration
 # ============================================================
-log_step "پیکربندی نصب"
+log_step "Installation configuration"
 
 if [ -z "$SERVER_ADDRESS" ]; then
-  log_info "در حال تشخیص آی‌پی عمومی سرور..."
+  log_info "Detecting the server's public IP..."
   DETECTED_IP="$(curl -4 -fsSL --max-time 5 https://ifconfig.me 2>/dev/null || true)"
   [ -z "$DETECTED_IP" ] && DETECTED_IP="$(curl -4 -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || true)"
   [ -z "$DETECTED_IP" ] && DETECTED_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-  SERVER_ADDRESS=$(ask "آدرس عمومی سرور (IP یا دامنه) که کاربران به آن وصل می‌شوند" "${DETECTED_IP:-YOUR_SERVER_IP}")
+  SERVER_ADDRESS=$(ask "Public server address (IP or domain) clients will connect to" "${DETECTED_IP:-YOUR_SERVER_IP}")
 fi
 
-ADMIN_USER=$(ask "نام کاربری ادمین پنل" "$ADMIN_USER")
+ADMIN_USER=$(ask "Panel admin username" "$ADMIN_USER")
 
 if [ -z "$ADMIN_PASS" ]; then
   ADMIN_PASS="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
-  log_info "رمز عبور ادمین به صورت خودکار تولید شد (در انتها نمایش داده می‌شود)."
+  log_info "Admin password auto-generated (shown at the end)."
 fi
 
-PANEL_PORT=$(ask "پورت پنل وب" "$PANEL_PORT")
-UDP_PORT=$(ask "پورت OpenVPN (UDP)" "$UDP_PORT")
+PANEL_PORT=$(ask "Web panel port" "$PANEL_PORT")
+UDP_PORT=$(ask "OpenVPN port (UDP)" "$UDP_PORT")
 
 if [ -z "$SETUP_NGINX" ]; then
-  wants_domain=$(ask_yn "آیا می‌خواهید پنل با دامنه و SSL رایگان (Let's Encrypt) بالا بیاید؟" "n")
+  wants_domain=$(ask_yn "Set up the panel with a domain and free SSL (Let's Encrypt)?" "n")
   if [ "$wants_domain" = "y" ]; then
     SETUP_NGINX=1
-    DOMAIN=$(ask "دامنه‌ای که به این سرور اشاره می‌کند" "")
-    [ -n "$DOMAIN" ] || { log_warn "دامنه وارد نشد، از راه‌اندازی Nginx صرف‌نظر شد."; SETUP_NGINX=0; }
+    DOMAIN=$(ask "Domain that points to this server" "")
+    [ -n "$DOMAIN" ] || { log_warn "No domain entered, skipping Nginx setup."; SETUP_NGINX=0; }
   else
     SETUP_NGINX=0
   fi
@@ -182,31 +182,31 @@ fi
 [ "$SKIP_NGINX" -eq 1 ] && SETUP_NGINX=0
 
 if [ "$SETUP_NGINX" -eq 1 ] && [ "$TCP_PORT" = "443" ]; then
-  log_warn "پورت 443 هم برای پنل (HTTPS) و هم پیش‌فرض برای OpenVPN TCP لازم است."
-  TCP_PORT=$(ask "پورت OpenVPN (TCP) — چون دامنه/443 برای پنل استفاده می‌شود، پورت دیگری انتخاب کنید" "8443")
+  log_warn "Port 443 is needed both for the panel (HTTPS) and by default for OpenVPN TCP."
+  TCP_PORT=$(ask "OpenVPN port (TCP) - pick a different port since 443/domain is used by the panel" "8443")
 else
-  TCP_PORT=$(ask "پورت OpenVPN (TCP)" "$TCP_PORT")
+  TCP_PORT=$(ask "OpenVPN port (TCP)" "$TCP_PORT")
 fi
 
 UDP_MGMT_PORT=7505
 TCP_MGMT_PORT=7506
 
-log_ok "پیکربندی کامل شد. شروع نصب..."
+log_ok "Configuration complete. Starting installation..."
 
 # ============================================================
 # Install packages
 # ============================================================
-log_step "نصب پکیج‌های سیستمی (ممکن است چند دقیقه طول بکشد)"
+log_step "Installing system packages (this can take a few minutes)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq \
   openvpn easy-rsa python3 python3-venv python3-pip \
   curl git rsync openssl iptables sqlite3 ca-certificates >/dev/null
-log_ok "پکیج‌های اصلی نصب شدند."
+log_ok "Core packages installed."
 
 if [ "$SETUP_NGINX" -eq 1 ]; then
   apt-get install -y -qq nginx certbot python3-certbot-nginx >/dev/null
-  log_ok "Nginx و Certbot نصب شدند."
+  log_ok "Nginx and Certbot installed."
 fi
 
 mkdir -p "$LOG_DIR"
@@ -222,26 +222,26 @@ else
   OVPN_CONF_DIR="${OVPN_DIR}"
 fi
 mkdir -p "$OVPN_CONF_DIR"
-log_info "از قالب سرویس systemd «${OVPN_SERVICE_PREFIX}» با پوشه کانفیگ «${OVPN_CONF_DIR}» استفاده می‌شود."
+log_info "Using systemd service template \"${OVPN_SERVICE_PREFIX}\" with config dir \"${OVPN_CONF_DIR}\"."
 
 # ============================================================
 # Enable IP forwarding
 # ============================================================
-log_step "فعال‌سازی IP forwarding"
+log_step "Enabling IP forwarding"
 if ! grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null; then
   echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 fi
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
-log_ok "ip_forward فعال شد."
+log_ok "ip_forward enabled."
 
 # ============================================================
 # PKI setup (easy-rsa)
 # ============================================================
-log_step "ساخت زیرساخت گواهی (CA/PKI) با easy-rsa"
+log_step "Building the certificate infrastructure (CA/PKI) with easy-rsa"
 
 if [ ! -d "$EASYRSA_DIR" ]; then
   EASYRSA_SHARE="$(find /usr/share -maxdepth 1 -iname 'easy-rsa' 2>/dev/null | head -n1)"
-  [ -n "$EASYRSA_SHARE" ] || die "پکیج easy-rsa پیدا نشد."
+  [ -n "$EASYRSA_SHARE" ] || die "The easy-rsa package was not found."
   cp -r "$EASYRSA_SHARE" "$EASYRSA_DIR"
   # some distros ship easyrsa under a versioned subdir; flatten if so
   if [ ! -f "${EASYRSA_DIR}/easyrsa" ]; then
@@ -257,17 +257,17 @@ if [ ! -d pki ]; then
   export EASYRSA_REQ_CN="Waze-Panel-CA"
   ./easyrsa init-pki >/dev/null
   ./easyrsa build-ca nopass >/dev/null
-  log_ok "CA ساخته شد."
+  log_ok "CA created."
   # build-server-full derives its own CN from the "server" argument and
   # conflicts with an externally-set EASYRSA_REQ_CN, so it must not be set
   # for this call (or for build-client-full, used later by the panel).
   unset EASYRSA_REQ_CN
   ./easyrsa build-server-full server nopass >/dev/null
-  log_ok "گواهی سرور ساخته شد."
+  log_ok "Server certificate created."
   ./easyrsa gen-crl >/dev/null
-  log_ok "لیست ابطال گواهی (CRL) ساخته شد."
+  log_ok "Certificate revocation list (CRL) created."
 else
-  log_info "PKI از قبل وجود دارد، این مرحله رد شد."
+  log_info "PKI already exists, skipping this step."
 fi
 
 cp "${EASYRSA_DIR}/pki/crl.pem" "${OVPN_CONF_DIR}/crl.pem"
@@ -275,30 +275,30 @@ chmod 644 "${OVPN_CONF_DIR}/crl.pem"
 
 if [ ! -f "${OVPN_CONF_DIR}/ta.key" ]; then
   openvpn --genkey secret "${OVPN_CONF_DIR}/ta.key"
-  log_ok "کلید tls-crypt ساخته شد."
+  log_ok "tls-crypt key created."
 fi
 
 if [ ! -f "${OVPN_CONF_DIR}/dh.pem" ]; then
-  log_info "در حال ساخت پارامترهای Diffie-Hellman (ممکن است تا ۱ دقیقه طول بکشد)..."
+  log_info "Generating Diffie-Hellman parameters (can take up to a minute)..."
   openssl dhparam -out "${OVPN_CONF_DIR}/dh.pem" 2048 2>/dev/null
-  log_ok "پارامترهای DH ساخته شد."
+  log_ok "DH parameters created."
 fi
 
 # ============================================================
 # Deploy application code
 # ============================================================
-log_step "استقرار کد پنل در ${APP_DIR}"
+log_step "Deploying the panel code to ${APP_DIR}"
 
 if [ -f "${SCRIPT_SOURCE_DIR}/app/main.py" ]; then
   if [ "$(readlink -f "$SCRIPT_SOURCE_DIR")" = "$(readlink -f "$APP_DIR" 2>/dev/null || echo __none__)" ]; then
-    log_info "در حال حاضر داخل ${APP_DIR} اجرا شده؛ کپی لازم نیست."
+    log_info "Already running from inside ${APP_DIR}; no copy needed."
   else
     mkdir -p "$APP_DIR"
     rsync -a --delete \
       --exclude 'venv' --exclude '.git' --exclude '__pycache__' --exclude '*.pyc' \
       "${SCRIPT_SOURCE_DIR}/" "${APP_DIR}/" 2>/dev/null || \
     cp -r "${SCRIPT_SOURCE_DIR}/." "${APP_DIR}/"
-    log_ok "کد از مسیر جاری کپی شد."
+    log_ok "Code copied from the current directory."
   fi
 else
   if [ -d "${APP_DIR}/.git" ]; then
@@ -307,21 +307,21 @@ else
     rm -rf "$APP_DIR"
     git clone --quiet --depth 1 "$REPO_URL" "$APP_DIR"
   fi
-  log_ok "کد از گیت‌هاب دریافت شد."
+  log_ok "Code fetched from GitHub."
 fi
 
 chmod +x "${APP_DIR}"/scripts/*.py "${APP_DIR}"/*.sh 2>/dev/null || true
 
-log_info "ساخت محیط مجازی پایتون و نصب وابستگی‌ها..."
+log_info "Creating the Python virtualenv and installing dependencies..."
 python3 -m venv "${APP_DIR}/venv"
 "${APP_DIR}/venv/bin/pip" install --quiet --upgrade pip
 "${APP_DIR}/venv/bin/pip" install --quiet -r "${APP_DIR}/requirements.txt"
-log_ok "وابستگی‌های پایتون نصب شدند."
+log_ok "Python dependencies installed."
 
 # ============================================================
 # Render OpenVPN server configs
 # ============================================================
-log_step "پیکربندی سرویس‌های OpenVPN (UDP + TCP)"
+log_step "Configuring the OpenVPN services (UDP + TCP)"
 
 render_tmpl() {
   local tmpl="$1" dest="$2"
@@ -346,15 +346,15 @@ if [ "$OVPN_CONF_DIR" != "${OVPN_DIR}/server" ]; then
   sed -i "s#${OVPN_DIR}/server#${OVPN_CONF_DIR}#g" "${OVPN_CONF_DIR}/${UDP_CONF_NAME}.conf" "${OVPN_CONF_DIR}/${TCP_CONF_NAME}.conf"
 fi
 
-log_ok "فایل‌های کانفیگ OpenVPN ساخته شدند."
+log_ok "OpenVPN config files created."
 
 # ============================================================
 # NAT / firewall rules
 # ============================================================
-log_step "پیکربندی NAT برای تانل‌های VPN"
+log_step "Configuring NAT for the VPN tunnels"
 
 WAN_IF="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')"
-[ -n "$WAN_IF" ] || log_warn "اینترفیس خروجی پیدا نشد؛ NAT به صورت دستی قابل تنظیم است."
+[ -n "$WAN_IF" ] || log_warn "Outbound interface not found; NAT can be configured manually."
 
 NAT_TMP="$(mktemp)"
 cat > "$NAT_TMP" <<EOF
@@ -387,7 +387,7 @@ mkdir -p "$DATA_DIR"
 mv "$NAT_TMP" "${DATA_DIR}/setup-nat.sh"
 chmod 700 "${DATA_DIR}/setup-nat.sh"
 bash "${DATA_DIR}/setup-nat.sh"
-log_ok "قوانین NAT/فایروال اعمال شدند."
+log_ok "NAT/firewall rules applied."
 
 cp "${APP_DIR}/scripts/waze-panel-nat.service.tmpl" /etc/systemd/system/waze-panel-nat.service
 
@@ -396,13 +396,13 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
   ufw allow "${UDP_PORT}/udp" >/dev/null || true
   ufw allow "${TCP_PORT}/tcp" >/dev/null || true
   [ "$SETUP_NGINX" -eq 1 ] && { ufw allow 80/tcp >/dev/null || true; ufw allow 443/tcp >/dev/null || true; }
-  log_ok "قوانین ufw اضافه شدند."
+  log_ok "ufw rules added."
 fi
 
 # ============================================================
 # Write panel.env
 # ============================================================
-log_step "نوشتن فایل تنظیمات پنل"
+log_step "Writing the panel configuration file"
 
 SECRET_KEY="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)"
 INTERNAL_TOKEN="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)"
@@ -433,30 +433,30 @@ SUBSCRIPTION_BASE_URL="${SUBSCRIPTION_BASE_URL}"
 TRAFFIC_POLL_INTERVAL_SECONDS="20"
 EOF
 chmod 600 "${DATA_DIR}/panel.env"
-log_ok "فایل ${DATA_DIR}/panel.env نوشته شد."
+log_ok "Wrote ${DATA_DIR}/panel.env."
 
 # ============================================================
 # Init DB + create admin
 # ============================================================
-log_step "ساخت پایگاه‌داده و کاربر ادمین"
+log_step "Creating the database and the admin user"
 "${APP_DIR}/venv/bin/python" -m app.cli init-db > /dev/null
 if ! "${APP_DIR}/venv/bin/python" -m app.cli create-admin --username "$ADMIN_USER" --password "$ADMIN_PASS" 2>/tmp/waze-admin-err.log; then
   if grep -q "already exists" /tmp/waze-admin-err.log; then
     "${APP_DIR}/venv/bin/python" -m app.cli reset-password --username "$ADMIN_USER" --password "$ADMIN_PASS" >/dev/null
-    log_ok "رمز عبور ادمین «${ADMIN_USER}» به‌روزرسانی شد."
+    log_ok "Password updated for admin '${ADMIN_USER}'."
   else
     cat /tmp/waze-admin-err.log >&2
-    die "ساخت کاربر ادمین با خطا مواجه شد."
+    die "Failed to create the admin user."
   fi
 else
-  log_ok "کاربر ادمین «${ADMIN_USER}» ساخته شد."
+  log_ok "Admin user '${ADMIN_USER}' created."
 fi
 rm -f /tmp/waze-admin-err.log
 
 # ============================================================
 # systemd services
 # ============================================================
-log_step "راه‌اندازی سرویس‌ها"
+log_step "Starting services"
 
 sed -e "s#__APP_DIR__#${APP_DIR}#g" -e "s#__PANEL_PORT__#${PANEL_PORT}#g" \
   "${APP_DIR}/scripts/waze-panel.service.tmpl" > /etc/systemd/system/waze-panel.service
@@ -472,9 +472,9 @@ sleep 2
 
 for svc in "${OVPN_SERVICE_PREFIX}${UDP_CONF_NAME}" "${OVPN_SERVICE_PREFIX}${TCP_CONF_NAME}" waze-panel.service; do
   if systemctl is-active --quiet "$svc"; then
-    log_ok "سرویس ${svc} در حال اجراست."
+    log_ok "Service ${svc} is running."
   else
-    log_warn "سرویس ${svc} بالا نیامد — با «journalctl -u ${svc} -e» بررسی کنید."
+    log_warn "Service ${svc} did not come up - check it with 'journalctl -u ${svc} -e'."
   fi
 done
 
@@ -482,21 +482,21 @@ done
 # Optional: Nginx + Let's Encrypt
 # ============================================================
 if [ "$SETUP_NGINX" -eq 1 ] && [ -n "$DOMAIN" ]; then
-  log_step "پیکربندی Nginx و SSL برای ${DOMAIN}"
+  log_step "Configuring Nginx and SSL for ${DOMAIN}"
   sed -e "s#__DOMAIN__#${DOMAIN}#g" -e "s#__PANEL_PORT__#${PANEL_PORT}#g" \
     "${APP_DIR}/scripts/nginx-waze-panel.conf.tmpl" > "/etc/nginx/sites-available/waze-panel.conf"
   ln -sf /etc/nginx/sites-available/waze-panel.conf /etc/nginx/sites-enabled/waze-panel.conf
   rm -f /etc/nginx/sites-enabled/default
   nginx -t && systemctl reload nginx
-  log_ok "Nginx برای ${DOMAIN} پیکربندی شد."
+  log_ok "Nginx configured for ${DOMAIN}."
 
   if certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "admin@${DOMAIN}" --redirect 2>/tmp/certbot.log; then
-    log_ok "گواهی SSL با Let's Encrypt صادر شد."
+    log_ok "SSL certificate issued via Let's Encrypt."
     SUBSCRIPTION_BASE_URL="https://${DOMAIN}"
     sed -i "s#^SUBSCRIPTION_BASE_URL=.*#SUBSCRIPTION_BASE_URL=\"${SUBSCRIPTION_BASE_URL}\"#" "${DATA_DIR}/panel.env"
     systemctl restart waze-panel.service
   else
-    log_warn "صدور گواهی SSL ناموفق بود (لاگ: /tmp/certbot.log). دامنه را بررسی کنید و بعدا 'certbot --nginx -d ${DOMAIN}' را دستی اجرا کنید."
+    log_warn "SSL certificate issuance failed (log: /tmp/certbot.log). Check the domain and run 'certbot --nginx -d ${DOMAIN}' manually later."
   fi
 fi
 
@@ -511,22 +511,22 @@ fi
 
 echo
 echo -e "${C_GREEN}${C_BOLD}=======================================================${C_RESET}"
-echo -e "${C_GREEN}${C_BOLD}  نصب Waze Panel با موفقیت تمام شد! 🎉${C_RESET}"
+echo -e "${C_GREEN}${C_BOLD}  Waze Panel installed successfully!${C_RESET}"
 echo -e "${C_GREEN}${C_BOLD}=======================================================${C_RESET}"
 echo
-echo -e "  ${C_BOLD}آدرس پنل:${C_RESET}      ${PANEL_URL}"
-echo -e "  ${C_BOLD}نام کاربری:${C_RESET}    ${ADMIN_USER}"
-echo -e "  ${C_BOLD}رمز عبور:${C_RESET}      ${ADMIN_PASS}"
+echo -e "  ${C_BOLD}Panel URL:${C_RESET}      ${PANEL_URL}"
+echo -e "  ${C_BOLD}Username:${C_RESET}       ${ADMIN_USER}"
+echo -e "  ${C_BOLD}Password:${C_RESET}       ${ADMIN_PASS}"
 echo
-echo -e "  ${C_BOLD}پورت OpenVPN UDP:${C_RESET} ${UDP_PORT}"
-echo -e "  ${C_BOLD}پورت OpenVPN TCP:${C_RESET} ${TCP_PORT}"
+echo -e "  ${C_BOLD}OpenVPN UDP port:${C_RESET} ${UDP_PORT}"
+echo -e "  ${C_BOLD}OpenVPN TCP port:${C_RESET} ${TCP_PORT}"
 echo
-echo -e "  این اطلاعات را جایی امن ذخیره کنید؛ دوباره نمایش داده نخواهند شد."
-echo -e "  فایل تنظیمات: ${DATA_DIR}/panel.env"
-echo -e "  لاگ سرویس پنل: journalctl -u waze-panel.service -f"
+echo -e "  Save this information somewhere safe; it will not be shown again."
+echo -e "  Config file: ${DATA_DIR}/panel.env"
+echo -e "  Panel service log: journalctl -u waze-panel.service -f"
 echo
 if [ "$SETUP_NGINX" -eq 0 ]; then
-  echo -e "  ${C_YELLOW}نکته امنیتی:${C_RESET} پنل روی HTTP ساده در دسترس است. برای امنیت بیشتر،"
-  echo -e "  یک دامنه تهیه کرده و نصب را با --domain دوباره اجرا کنید تا HTTPS رایگان فعال شود."
+  echo -e "  ${C_YELLOW}Security note:${C_RESET} the panel is reachable over plain HTTP. For better"
+  echo -e "  security, get a domain and re-run the installer with --domain to enable free HTTPS."
 fi
 echo

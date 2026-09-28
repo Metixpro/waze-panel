@@ -15,10 +15,10 @@ EASYRSA_DIR="${OVPN_DIR}/easy-rsa"
 
 C_BLUE="\033[1;34m"; C_GREEN="\033[1;32m"; C_YELLOW="\033[1;33m"; C_RESET="\033[0m"
 log_step() { echo -e "\n${C_BLUE}==>${C_RESET} $*"; }
-log_ok()   { echo -e "    ${C_GREEN}✓${C_RESET} $*"; }
+log_ok()   { echo -e "    ${C_GREEN}OK${C_RESET} $*"; }
 log_warn() { echo -e "    ${C_YELLOW}!${C_RESET} $*"; }
 
-[ "$(id -u)" -eq 0 ] || { echo "این اسکریپت باید با sudo/root اجرا شود." >&2; exit 1; }
+[ "$(id -u)" -eq 0 ] || { echo "This script must be run as root/sudo." >&2; exit 1; }
 
 PURGE=0
 [ "${1:-}" = "--purge" ] && PURGE=1
@@ -33,56 +33,56 @@ confirm() {
   case "$answer" in y|Y|yes|Yes) echo "y" ;; *) echo "n" ;; esac
 }
 
-log_step "توقف سرویس‌ها"
+log_step "Stopping services"
 for svc in waze-panel.service waze-panel-nat.service \
   "openvpn-server@waze-udp" "openvpn-server@waze-tcp" \
   "openvpn@waze-udp" "openvpn@waze-tcp"; do
   systemctl disable --now "$svc" >/dev/null 2>&1 || true
 done
-log_ok "سرویس‌ها متوقف شدند."
+log_ok "Services stopped."
 
-log_step "حذف فایل‌های systemd"
+log_step "Removing systemd files"
 rm -f /etc/systemd/system/waze-panel.service /etc/systemd/system/waze-panel-nat.service
 rm -f "${OVPN_DIR}/server/waze-udp.conf" "${OVPN_DIR}/server/waze-tcp.conf"
 rm -f "${OVPN_DIR}/waze-udp.conf" "${OVPN_DIR}/waze-tcp.conf"
 systemctl daemon-reload
-log_ok "انجام شد."
+log_ok "Done."
 
-log_step "حذف قوانین NAT/فایروال"
+log_step "Removing NAT/firewall rules"
 if [ -f "${DATA_DIR}/setup-nat.sh" ]; then
   WAN_IF="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')"
   for SUBNET in 10.8.0.0/24 10.9.0.0/24; do
     [ -n "$WAN_IF" ] && iptables -t nat -D POSTROUTING -s "$SUBNET" -o "$WAN_IF" -j MASQUERADE 2>/dev/null || true
     iptables -D FORWARD -s "$SUBNET" -j ACCEPT 2>/dev/null || true
   done
-  log_ok "قوانین NAT حذف شدند (در صورت وجود)."
+  log_ok "NAT rules removed (if any were present)."
 else
-  log_warn "فایل setup-nat.sh پیدا نشد، این مرحله رد شد."
+  log_warn "setup-nat.sh not found, skipping this step."
 fi
 
-if [ "$(confirm "پنل، پایگاه‌داده و تمام تنظیمات (${APP_DIR} و ${DATA_DIR}) حذف شوند؟")" = "y" ]; then
+if [ "$(confirm "Remove the panel, database, and all settings (${APP_DIR} and ${DATA_DIR})?")" = "y" ]; then
   rm -rf "$APP_DIR" "$DATA_DIR"
-  log_ok "پنل و تنظیمات حذف شدند."
+  log_ok "Panel and settings removed."
 else
-  log_warn "پنل و تنظیمات نگه داشته شدند."
+  log_warn "Panel and settings kept."
 fi
 
-if [ "$(confirm "زیرساخت گواهی (CA/PKI) هم حذف شود؟ این کار همه کانفیگ‌های صادرشده کاربران را برای همیشه بی‌اعتبار می‌کند.")" = "y" ]; then
+if [ "$(confirm "Also remove the certificate infrastructure (CA/PKI)? This permanently invalidates every issued user config.")" = "y" ]; then
   rm -rf "$EASYRSA_DIR"
   rm -f "${OVPN_DIR}/server/ta.key" "${OVPN_DIR}/server/dh.pem" "${OVPN_DIR}/server/crl.pem"
   rm -f "${OVPN_DIR}/server/status-udp.log" "${OVPN_DIR}/server/status-tcp.log"
   rm -f "${OVPN_DIR}/server/ipp-udp.txt" "${OVPN_DIR}/server/ipp-tcp.txt"
-  log_ok "PKI و فایل‌های سرور OpenVPN حذف شدند."
+  log_ok "PKI and OpenVPN server files removed."
 else
-  log_warn "PKI نگه داشته شد."
+  log_warn "PKI kept."
 fi
 
-if [ -f /etc/nginx/sites-enabled/waze-panel.conf ] && [ "$(confirm "پیکربندی Nginx مربوط به پنل هم حذف شود؟")" = "y" ]; then
+if [ -f /etc/nginx/sites-enabled/waze-panel.conf ] && [ "$(confirm "Also remove the panel's Nginx configuration?")" = "y" ]; then
   rm -f /etc/nginx/sites-enabled/waze-panel.conf /etc/nginx/sites-available/waze-panel.conf
   systemctl reload nginx 2>/dev/null || true
-  log_ok "پیکربندی Nginx حذف شد."
+  log_ok "Nginx configuration removed."
 fi
 
 echo
-log_ok "حذف نصب Waze Panel تمام شد."
-echo -e "    ${C_YELLOW}نکته:${C_RESET} پکیج‌های openvpn/easy-rsa/nginx از سیستم حذف نشدند (در صورت نیاز به صورت دستی apt remove کنید)."
+log_ok "Waze Panel uninstall complete."
+echo -e "    ${C_YELLOW}Note:${C_RESET} the openvpn/easy-rsa/nginx packages were not removed from the system (run apt remove manually if needed)."
