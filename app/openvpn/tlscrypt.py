@@ -9,7 +9,8 @@ scripts/tls-crypt-verify.py checks with the panel before the handshake
 starts. A new key gets a new id, so every copy of the old config stops
 working at once while nobody else is affected.
 
-Modes (setting TLS_CRYPT_MODE):
+Modes (setting TLS_CRYPT_MODE), shared unless the admin picks another one
+(some older OpenVPN apps can't read tls-crypt-v2 keys):
   shared    only the old shared key (ta.key)
   compat    both: new downloads get personal keys, old configs keep working
   per_user  personal keys only
@@ -70,17 +71,6 @@ def set_mode(db: Session, mode: str) -> None:
     else:
         row.value = mode
     db.commit()
-
-
-def init_mode(db: Session) -> str:
-    """First run decides: a new server starts on personal keys right away,
-    an upgraded one keeps working exactly as before until the admin opts in
-    (its users hold configs with the shared key)."""
-    row = db.get(Setting, MODE_KEY)
-    if row is None:
-        has_users = db.query(VpnUser.id).first() is not None
-        set_mode(db, "per_user" if not has_users and supported() else "shared")
-    return get_mode(db)
 
 
 # ---------------------------------------------------------------------- keys

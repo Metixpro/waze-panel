@@ -105,7 +105,7 @@ def cmd_apply_network(_args) -> None:
     init_db()
     db = SessionLocal()
     try:
-        mode = tlscrypt.init_mode(db)
+        mode = tlscrypt.get_mode(db)
         connection.write_openvpn(db)
         err = connection.apply_port_rules(db)
         if err:

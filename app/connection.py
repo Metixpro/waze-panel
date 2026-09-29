@@ -184,7 +184,6 @@ def write_openvpn(db: Session) -> None:
 
 
 def startup(db: Session) -> None:
-    tlscrypt.init_mode(db)
     if service.wired():
         try:
             write_openvpn(db)
