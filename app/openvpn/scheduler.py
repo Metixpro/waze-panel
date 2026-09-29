@@ -50,7 +50,7 @@ def _instances() -> list[tuple[str, int]]:
     return [("udp", settings.OVPN_UDP_MGMT_PORT), ("tcp", settings.OVPN_TCP_MGMT_PORT)]
 
 
-def _record_usage(db, user: VpnUser, delta: int) -> None:
+def record_usage(db, user: VpnUser, delta: int) -> None:
     user.data_used_bytes = (user.data_used_bytes or 0) + delta
     today = datetime.date.today()
     sample = (
@@ -161,7 +161,7 @@ def _poll_once() -> None:
                         continue
 
                     if delta:
-                        _record_usage(db, user, delta)
+                        record_usage(db, user, delta)
                     user.last_connected_at = datetime.datetime.now(datetime.timezone.utc)
                     user.last_ip = ip
                     db.flush()
@@ -251,7 +251,7 @@ def finalize_disconnect(
         try:
             user = find_vpn_user(db, identity)
             if user is not None:
-                _record_usage(db, user, delta)
+                record_usage(db, user, delta)
                 db.commit()
         except Exception:
             db.rollback()
@@ -276,6 +276,15 @@ def _check_relays() -> None:
         relays.run_checks()
     except Exception:
         logger.exception("relay check failed")
+
+
+def _poll_xray() -> None:
+    from app.xray import core
+
+    try:
+        core.poll()
+    except Exception:
+        logger.exception("Xray poll failed")
 
 
 def _check_updates() -> None:
@@ -308,6 +317,16 @@ def start_scheduler() -> BackgroundScheduler:
         hours=24,
         id="crl_refresh",
         next_run_time=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=30),
+        max_instances=1,
+        coalesce=True,
+    )
+    # Xray: per-user traffic and online users, then drop whoever just ran
+    # out of data or time (runs apart from the OpenVPN poll and its lock).
+    _scheduler.add_job(
+        _poll_xray,
+        "interval",
+        seconds=settings.TRAFFIC_POLL_INTERVAL_SECONDS,
+        id="xray_poll",
         max_instances=1,
         coalesce=True,
     )
@@ -344,16 +363,19 @@ def stop_scheduler() -> None:
 
 
 def get_online_usernames() -> set[str]:
-    """Usernames currently connected on either instance, based on the most
+    """Usernames currently connected (OpenVPN or Xray), based on the most
     recent poll. Cheap, in-memory, no DB/socket hit."""
-    with _lock:
-        return {s["username"] for s in _sessions.values()}
+    return {s["username"] for s in get_online_sessions()}
 
 
 def get_online_sessions() -> list[dict]:
-    """Live sessions from the most recent poll (newest first)."""
+    """Live sessions from the most recent polls (newest first): one per
+    OpenVPN connection, one per user connected over Xray."""
+    from app.xray.core import online_sessions
+
     with _lock:
         sessions = [
             {k: v[k] for k in ("username", "proto", "ip", "since", "bytes")} for v in _sessions.values()
         ]
+    sessions += online_sessions()
     return sorted(sessions, key=lambda s: s["since"], reverse=True)

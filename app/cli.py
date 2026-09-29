@@ -7,6 +7,8 @@ maintenance:
     python -m app.cli list-admins
     python -m app.cli backup --out /root
     python -m app.cli apply-network
+    python -m app.cli xray-apply
+    python -m app.cli xray-ports
     python -m app.cli version
 """
 import argparse
@@ -115,6 +117,42 @@ def cmd_apply_network(_args) -> None:
         db.close()
 
 
+def cmd_xray_apply(_args) -> None:
+    """Used by xray-install.sh: write Xray's config from the database, open
+    the inbounds' ports and (re)start it, so a new binary is picked up."""
+    from app.models import XrayInbound
+    from app.xray import core
+
+    init_db()
+    core.secure_files()
+    db = SessionLocal()
+    try:
+        for ib in db.query(XrayInbound).filter(XrayInbound.enabled.is_(True)).all():
+            core.open_port(ib.port, udp=ib.protocol == "shadowsocks")
+        state = core.apply(db, force=True)
+    except core.XrayError as exc:
+        print(f"xray: {exc}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        db.close()
+    print(f"xray: {state}")
+
+
+def cmd_xray_ports(_args) -> None:
+    """port/proto of every Xray inbound, one per line (uninstall.sh closes them)."""
+    from app.models import XrayInbound
+
+    init_db()
+    db = SessionLocal()
+    try:
+        for ib in db.query(XrayInbound).all():
+            print(f"{ib.port}/tcp")
+            if ib.protocol == "shadowsocks":
+                print(f"{ib.port}/udp")
+    finally:
+        db.close()
+
+
 def cmd_version(_args) -> None:
     from app.version import __version__, build_info
 
@@ -154,6 +192,9 @@ def main() -> None:
     p.set_defaults(func=cmd_backup)
 
     sub.add_parser("apply-network").set_defaults(func=cmd_apply_network)
+
+    sub.add_parser("xray-apply").set_defaults(func=cmd_xray_apply)
+    sub.add_parser("xray-ports").set_defaults(func=cmd_xray_ports)
 
     sub.add_parser("version").set_defaults(func=cmd_version)
 

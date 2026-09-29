@@ -33,8 +33,14 @@ confirm() {
   case "$answer" in y|Y|yes|Yes) echo "y" ;; *) echo "n" ;; esac
 }
 
+# Xray's inbound ports, while the database is still here to list them
+XRAY_PORTS=""
+if [ -x "${APP_DIR}/venv/bin/python" ]; then
+  XRAY_PORTS="$(cd "$APP_DIR" && ./venv/bin/python -m app.cli xray-ports 2>/dev/null || true)"
+fi
+
 log_step "Stopping services"
-for svc in waze-panel.service waze-panel-nat.service \
+for svc in waze-panel.service waze-panel-nat.service waze-xray.service \
   "openvpn-server@waze-udp" "openvpn-server@waze-tcp" \
   "openvpn@waze-udp" "openvpn@waze-tcp"; do
   systemctl disable --now "$svc" >/dev/null 2>&1 || true
@@ -42,7 +48,8 @@ done
 log_ok "Services stopped."
 
 log_step "Removing systemd files"
-rm -f /etc/systemd/system/waze-panel.service /etc/systemd/system/waze-panel-nat.service
+rm -f /etc/systemd/system/waze-panel.service /etc/systemd/system/waze-panel-nat.service /etc/systemd/system/waze-xray.service
+rm -rf /usr/local/share/waze-panel
 rm -rf /etc/systemd/system/openvpn-server@waze-{udp,tcp}.service.d /etc/systemd/system/openvpn@waze-{udp,tcp}.service.d
 rm -f /usr/local/bin/waze-panel /etc/logrotate.d/waze-panel
 rm -f "${OVPN_DIR}"/server/waze-{udp,tcp}.conf "${OVPN_DIR}"/server/waze-{udp,tcp}.panel.conf
@@ -66,6 +73,13 @@ JUMP=(PREROUTING -m addrtype --dst-type LOCAL ! -i "tun-waze+" -j WAZE_PORTS)
 while iptables -t nat -D "${JUMP[@]}" 2>/dev/null; do :; done
 iptables -t nat -F WAZE_PORTS 2>/dev/null || true
 iptables -t nat -X WAZE_PORTS 2>/dev/null || true
+# Xray inbounds
+UFW_ON=0
+command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active" && UFW_ON=1
+for pp in $XRAY_PORTS; do
+  while iptables -D INPUT -p "${pp#*/}" --dport "${pp%/*}" -j ACCEPT 2>/dev/null; do :; done
+  [ "$UFW_ON" -eq 1 ] && ufw delete allow "$pp" >/dev/null 2>&1 || true
+done
 
 if [ "$(confirm "Remove the panel, database, and all settings (${APP_DIR} and ${DATA_DIR})?")" = "y" ]; then
   rm -rf "$APP_DIR" "$DATA_DIR"

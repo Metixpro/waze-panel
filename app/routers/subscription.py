@@ -9,6 +9,7 @@ from app.openvpn import certs
 from app.openvpn.templates import build_ovpn
 from app.pwa import web_manifest
 from app.templating import templates
+from app.xray import links as xray_links
 
 router = APIRouter()
 
@@ -40,6 +41,8 @@ def subscription_page(token: str, request: Request, db: Session = Depends(get_db
             "panel_title": settings.PANEL_TITLE,
             "days_left": user.days_left(),
             "auth_mode": user.auth_mode or "cert",
+            "xray_links": xray_links.user_links(db, user) if user.xray_enabled else [],
+            "xray_sub": f"{settings.public_base_url}/sub/{token}/xray",
         },
     )
 
@@ -50,6 +53,15 @@ def subscription_manifest(token: str, db: Session = Depends(get_db)):
     check their usage like an app."""
     user = _get_user_or_404(token, db)
     return web_manifest(f"{user.username} · {settings.PANEL_TITLE}", user.username, f"/sub/{token}", f"/sub/{token}")
+
+
+@router.get("/sub/{token}/xray")
+def subscription_xray(token: str, db: Session = Depends(get_db)):
+    """The Xray subscription apps import and refresh: base64 of the share
+    links, with usage and expiry in the headers they understand."""
+    user = _get_user_or_404(token, db)
+    body, headers = xray_links.subscription(db, user)
+    return PlainTextResponse(body, headers=headers)
 
 
 @router.get("/sub/{token}/{proto}")

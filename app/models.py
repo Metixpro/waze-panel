@@ -116,6 +116,12 @@ class VpnUser(Base):
     tls_key_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
     tls_key_seen_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Xray (app/xray): one UUID for VLESS/VMess/Trojan and a random key for
+    # Shadowsocks 2022, made on first use. A new pair retires every old link.
+    xray_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    xray_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    xray_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     @property
     def needs_password(self) -> bool:
         return self.auth_mode in ("cert_pass", "pass")
@@ -192,6 +198,26 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
+
+
+class XrayInbound(Base):
+    """One Xray listener (protocol + transport + security on a port). Every
+    user with Xray access is a client of every enabled inbound; the rest of
+    the options (paths, REALITY keys, ...) live in the JSON `options`."""
+
+    __tablename__ = "xray_inbounds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(40))
+    protocol: Mapped[str] = mapped_column(String(16))      # vless vmess trojan shadowsocks
+    transport: Mapped[str] = mapped_column(String(16))     # raw ws xhttp grpc httpupgrade
+    security: Mapped[str] = mapped_column(String(16))      # none tls reality
+    port: Mapped[int] = mapped_column(Integer)
+    options: Mapped[str] = mapped_column(Text, default="{}")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    traffic_bytes: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class RelayServer(Base):

@@ -26,7 +26,8 @@ const SORTS = {
   name: (a, b) => a.username.localeCompare(b.username),
 };
 
-const protos = (u) => u.online_protos.map((p) => p.toUpperCase()).join(" + ");
+const PROTO_LABEL = { udp: "UDP", tcp: "TCP", xray: "Xray" };
+const protos = (u) => u.online_protos.map((p) => PROTO_LABEL[p] || p.toUpperCase()).join(" + ");
 const shortDate = (iso) => jDate(iso, { month: "long", day: "numeric" });
 
 /* ------------------------------------------------------------ list view */
@@ -225,6 +226,8 @@ function drawerHtml(u) {
     </details>
   </div>
 
+  ${xraySection(u)}
+
   <form class="dsec" id="edit-form" autocomplete="off">
     <div class="dsec-title">ویرایش</div>
     <div class="field">
@@ -288,7 +291,7 @@ function loginSection(u) {
       </form>`;
   return `
     <div class="dsec">
-      <div class="dsec-title">روش ورود</div>
+      <div class="dsec-title">روش ورود OpenVPN</div>
       <div class="modes" role="radiogroup">${modes}</div>
       <div class="hint">${MODE_HINTS[mode]}</div>
       ${pw}
@@ -303,13 +306,71 @@ function keySection(u) {
     : u.tls_key ? "هنوز با این کلید وصل نشده" : "با اولین دانلود کانفیگ ساخته می‌شود";
   return `
     <div class="dsec">
-      <div class="dsec-title">کلید اتصال</div>
+      <div class="dsec-title">کلید اتصال OpenVPN</div>
       <div class="setting-row">
         <div><div class="t">کلید شخصی <span class="mono muted" style="font-weight:400">tls-crypt-v2</span></div><div class="s">${state}</div></div>
         <button class="btn sm" type="button" data-act="new-key">${ic("key")} کلید جدید</button>
       </div>
       <div class="hint">اگر فایل کانفیگ این کاربر دست کس دیگری افتاده، کلید جدید بسازید: همه‌ی نسخه‌های قبلی همان لحظه از کار می‌افتند و بقیه‌ی کاربران دست نمی‌خورند.</div>
     </div>`;
+}
+
+// Xray: one share link per enabled inbound, the auto-updating Xray
+// subscription, and new credentials if a link leaked.
+const XPROTO_TAG = { vless: "VL", vmess: "VM", trojan: "TR", shadowsocks: "SS" };
+function xraySection(u) {
+  const toggle = `
+      <div class="setting-row">
+        <div><div class="t">دسترسی Xray</div><div class="s">${u.xray_enabled ? "لینک‌های VLESS، VMess، Trojan و Shadowsocks با همین حجم و تاریخ." : "خاموش: لینک‌های Xray این کاربر کار نمی‌کنند؛ OpenVPN دست نمی‌خورد."}</div></div>
+        <label class="switch"><input type="checkbox" data-act="xray-toggle" ${u.xray_enabled ? "checked" : ""} aria-label="دسترسی Xray" /><span></span></label>
+      </div>`;
+  if (!u.xray_inbounds) {
+    return `
+    <div class="dsec">
+      <div class="dsec-title">Xray</div>
+      <div class="hint" style="margin:0">هنوز ورودی Xray ندارید. <a class="link" href="/xray">ساخت ورودی ${ic("chevron-left")}</a></div>
+    </div>`;
+  }
+  if (!u.xray_enabled) return `<div class="dsec"><div class="dsec-title">Xray</div>${toggle}</div>`;
+  const links = u.xray_links || [];
+  const rows = links.map((l, i) => `
+      <div class="xlink">
+        <span class="xproto sm p-${l.protocol}">${XPROTO_TAG[l.protocol]}</span>
+        <div class="grow"><div class="t">${esc(l.name)}</div><div class="s ltr">${esc(l.label)}</div></div>
+        <button class="btn icon sm ghost" type="button" data-act="xl-qr" data-i="${i}" title="QR">${ic("qr")}</button>
+        <button class="btn icon sm ghost" type="button" data-copy="${esc(l.link)}" data-copy-msg="لینک ${esc(l.name)} کپی شد" title="کپی">${ic("copy")}</button>
+      </div>`).join("");
+  return `
+    <div class="dsec">
+      <div class="dsec-title">Xray <span class="muted">${fa(links.length)} لینک</span></div>
+      ${toggle}
+      <div class="xlinks">${rows}</div>
+      <div class="qr-box xl-qr hide" id="xl-qr"></div>
+      <div class="field" style="margin:14px 0 0">
+        <label>لینک اشتراک Xray</label>
+        <div class="input-group">
+          <input type="text" class="mono" dir="ltr" readonly value="${esc(u.xray_sub)}" aria-label="لینک اشتراک Xray" />
+          <button class="btn" type="button" data-copy="${esc(u.xray_sub)}" data-copy-msg="لینک اشتراک Xray کپی شد" title="کپی">${ic("copy")}</button>
+        </div>
+        <div class="hint">در v2rayNG، Hiddify یا Streisand با «افزودن اشتراک» وارد شود تا ورودی‌های بعدی و حجم باقیمانده خودکار به‌روز شوند.</div>
+      </div>
+      <div class="row" style="margin-top:10px; gap:8px; flex-wrap:wrap">
+        <button class="btn sm" type="button" data-copy="${esc(links.map((l) => l.link).join("\n"))}" data-copy-msg="همه‌ی لینک‌ها کپی شد">${ic("copy")} کپی همه</button>
+        <button class="btn sm" type="button" data-act="xl-sub-qr">${ic("qr")} QR اشتراک</button>
+        <button class="btn sm" type="button" data-act="xray-regen">${ic("refresh")} لینک‌های جدید</button>
+      </div>
+    </div>`;
+}
+
+function showXrayQr(btn, text) {
+  const box = $("#xl-qr");
+  const same = box.dataset.for === text && !box.classList.contains("hide");
+  $$("#drawer .xlink .btn.on, #drawer [data-act=xl-sub-qr].on").forEach((b) => b.classList.remove("on"));
+  if (same) { box.classList.add("hide"); box.dataset.for = ""; return; }
+  box.dataset.for = text;
+  box.classList.remove("hide");
+  renderQr(box, text, 220);
+  btn.classList.add("on");
 }
 
 function drawUserChart(u) {
@@ -375,11 +436,23 @@ $("#drawer").addEventListener("overlay-close", () => { currentId = null; current
 
 $("#drawer").addEventListener("click", async (ev) => {
   const el = ev.target.closest("[data-act]");
-  if (!el || el.dataset.act === "toggle") return;
+  if (!el || el.dataset.act === "toggle" || el.dataset.act === "xray-toggle") return;
   const act = el.dataset.act;
   const u = currentUser;
   try {
     if (act === "share") return shareOrCopy(shareText(u), u.username);
+    if (act === "xl-qr") return showXrayQr(el, u.xray_links[+el.dataset.i].link);
+    if (act === "xl-sub-qr") return showXrayQr(el, u.xray_sub);
+    if (act === "xray-regen") {
+      if (!(await confirmDialog({
+        title: `لینک‌های Xray ${u.username} عوض شود؟`,
+        message: "همه‌ی لینک‌های Xray قبلی این کاربر همان لحظه از کار می‌افتند و اگر وصل است قطع می‌شود. کاربر باید اشتراک را در اپ به‌روز کند؛ لینک اشتراک و OpenVPN عوض نمی‌شوند.",
+        ok: "ساخت لینک‌های جدید",
+      }))) return;
+      await withBusy(el, () => api(`/api/users/${u.id}/regenerate_xray`, { method: "POST" }));
+      toast("لینک‌های Xray عوض شد");
+      return refreshDrawer();
+    }
     if (act === "pw-copy") return copyText($("#pw-input").value, "رمز کپی شد", el);
     if (act === "pw-eye") {
       const inp = $("#pw-input");
@@ -441,6 +514,16 @@ $("#drawer").addEventListener("click", async (ev) => {
 });
 
 $("#drawer").addEventListener("change", async (ev) => {
+  if (ev.target.dataset.act === "xray-toggle") {
+    const on = ev.target.checked;
+    try {
+      await patchUser({ xray_enabled: on }, on ? "Xray برای این کاربر روشن شد" : "Xray برای این کاربر خاموش شد");
+    } catch (e) {
+      ev.target.checked = !on;
+      toast(e.message, "error");
+    }
+    return;
+  }
   if (ev.target.dataset.act !== "toggle") return;
   try {
     const u = await api(`/api/users/${currentId}/toggle`, { method: "POST" });

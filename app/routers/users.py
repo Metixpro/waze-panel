@@ -10,11 +10,13 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.deps import get_optional_admin
-from app.models import AUTH_MODES, AdminUser, TrafficSample, VpnUser, generate_vpn_password
+from app.models import AUTH_MODES, AdminUser, TrafficSample, VpnUser, XrayInbound, generate_vpn_password
 from app.openvpn import certs, mgmt, tlscrypt
 from app.openvpn.templates import build_ovpn
 from app.relays import relay_names_by_ip
 from app.templating import templates
+from app.xray import core as xray_core
+from app.xray import links as xray_links
 
 router = APIRouter()
 
@@ -63,6 +65,7 @@ class UpdateUserRequest(BaseModel):
     password: str | None = None
     regenerate_password: bool = False
     max_devices: int | None = Field(default=None, ge=0, le=100)
+    xray_enabled: bool | None = None
 
 
 def _require_admin(admin: AdminUser | None):
@@ -117,6 +120,7 @@ def _serialize(
         "last_via": relay_names_by_ip().get(user.last_ip or ""),
         "token": user.token,
         "sub_link": f"{settings.public_base_url}/sub/{user.token}",
+        "xray_enabled": bool(user.xray_enabled),
         "tls_key": bool(user.tls_key),
         "tls_key_seen_at": _iso(user.tls_key_seen_at),
     }
@@ -196,10 +200,12 @@ def create_user(
             tlscrypt.issue_user_key(user)
         except tlscrypt.TlsKeyError:
             pass  # made on the first download instead
+    xray_core.ensure_credentials(user)
 
     db.add(user)
     db.commit()
     db.refresh(user)
+    xray_core.sync_soon()
 
     return _serialize(user, with_secret=True)
 
@@ -217,6 +223,9 @@ def get_user(
 
     data = _serialize(user, with_secret=True)
     data["tls_mode"] = tlscrypt.get_mode(db)
+    data["xray_links"] = xray_links.user_links(db, user) if user.xray_enabled else []
+    data["xray_sub"] = f"{settings.public_base_url}/sub/{user.token}/xray"
+    data["xray_inbounds"] = db.query(XrayInbound).filter(XrayInbound.enabled.is_(True)).count()
 
     since = datetime.date.today() - datetime.timedelta(days=13)
     rows = (
@@ -286,9 +295,12 @@ def update_user(
         user.auth_password = generate_vpn_password()
     if payload.max_devices is not None:
         user.max_devices = payload.max_devices
+    if payload.xray_enabled is not None:
+        user.xray_enabled = payload.xray_enabled
 
     db.commit()
     db.refresh(user)
+    xray_core.sync_soon()
     if relogin:
         _kill_everywhere(user.username)
     elif payload.max_devices:
@@ -319,6 +331,7 @@ def toggle_user(
 
     if not user.enabled:
         _kill_everywhere(user.username)
+    xray_core.sync_soon()
 
     return _serialize(user)
 
@@ -336,6 +349,7 @@ def reset_usage(
     user.data_used_bytes = 0
     db.commit()
     db.refresh(user)
+    xray_core.sync_soon()
     return _serialize(user)
 
 
@@ -400,7 +414,29 @@ def delete_user(
     db.query(TrafficSample).filter(TrafficSample.vpn_user_id == user.id).delete()
     db.delete(user)
     db.commit()
+    xray_core.sync_soon()
     return {"ok": True}
+
+
+@router.post("/api/users/{user_id}/regenerate_xray")
+def regenerate_xray(
+    user_id: int,
+    admin: AdminUser | None = Depends(get_optional_admin),
+    db: Session = Depends(get_db),
+):
+    """New Xray UUID/key: every Xray link the user had stops working, the
+    subscription link stays the same and serves the new ones."""
+    _require_admin(admin)
+    user = db.get(VpnUser, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="not found")
+    xray_core.regenerate_credentials(user)
+    db.commit()
+    try:
+        xray_core.apply(db)
+    except xray_core.XrayError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return _serialize(user, with_secret=True)
 
 
 @router.get("/api/users/{user_id}/config/{proto}")

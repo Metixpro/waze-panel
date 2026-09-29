@@ -30,6 +30,7 @@
   --brand-a: #5b86ff;         /* the logo's two blues */
   --brand-b: #2f5ee0;
   --teal: #3cc6c0;
+  --violet: #a58bff;
   --accent-soft: rgba(90, 140, 255, 0.13);
   --on-accent: #fff;
 
@@ -64,6 +65,7 @@
   --accent-fill: #3464e6;
   --accent-fill-hover: #2650c7;
   --teal: #0f9b95;
+  --violet: #7a56e0;
   --accent-soft: rgba(47, 98, 230, 0.09);
 
   --green: #1d9a5b;  --green-soft: rgba(29, 154, 91, 0.1);
@@ -1242,3 +1244,57 @@ a.tag:hover { color: var(--text); border-color: var(--text-3); }
   .about-foot .af-wrap { display: none; }
   .about-foot .af-line { flex-basis: 100%; text-align: center; }
 }
+
+/* ================================================================= xray */
+.flip { transform: scaleX(-1); }
+.stat-label svg { width: 15px; height: 15px; color: var(--text-3); }
+.stat-sub .dot { width: 7px; height: 7px; }
+.modal.wide { width: min(640px, calc(100vw - 32px)); }
+.field-row.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.hint.ok { color: var(--green); }
+.hint.bad { color: var(--red); }
+.hint.ok svg { width: 14px; height: 14px; vertical-align: -2px; }
+
+.xpresets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.xpreset .kt svg { color: var(--accent); }
+
+/* a two-letter tile per protocol */
+.xproto {
+  width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0; display: grid; place-items: center;
+  font: 700 12px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: 0.5px;
+  color: var(--accent); background: var(--accent-soft);
+}
+.xproto.p-vmess { color: var(--teal); background: rgba(60, 198, 192, 0.12); }
+.xproto.p-trojan { color: var(--amber); background: var(--amber-soft); }
+.xproto.p-shadowsocks { color: var(--text-2); background: var(--gray-soft); }
+.xrow .meta svg { width: 12px; height: 12px; }
+.xrow.off .info, .xrow.off .xproto { opacity: 0.5; }
+.xrow .end { min-width: 72px; }
+
+.tips { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.tips li { display: flex; gap: 10px; font-size: 13.5px; line-height: 1.8; color: var(--text-2); }
+.tips li svg { width: 17px; height: 17px; flex-shrink: 0; margin-top: 4px; color: var(--accent); }
+.tips b { color: var(--text); font-weight: 600; }
+
+@media (max-width: 640px) {
+  .xpresets, .field-row.three { grid-template-columns: 1fr; }
+  .field-row.three { gap: 0; }
+  .xrow { flex-wrap: wrap; }
+  .xrow .relay-ops { width: 100%; justify-content: flex-end; }
+}
+.about-link .xproto { width: 40px; height: 40px; border-radius: 12px; }
+.xproto.sm { width: 30px; height: 30px; border-radius: 8px; font-size: 11px; }
+.xlinks { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.xlink { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; }
+.xlink + .xlink { border-top: 1px solid var(--line); }
+.xlink .t { font-weight: 600; font-size: 13px; }
+.xlink .s { font-size: 12px; color: var(--text-3); text-align: right; }
+.xlink .btn.on, .dsec .btn.on { color: var(--accent); background: var(--accent-soft); }
+.xl-qr { margin-top: 12px; }
+.xapps { display: grid; gap: 8px; }
+.xapp { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.xapp .t { font-weight: 650; font-size: 13.5px; }
+.xapp .s { font-size: 12px; color: var(--text-3); }
+.xapp .dl-ic { width: 34px; height: 34px; }
+.xapp .btn.primary { min-width: 84px; }
+#xray-card .xlink .btn.on { color: var(--accent); background: var(--accent-soft); }

@@ -74,7 +74,7 @@
   {% endif %}
 
   <section class="card">
-    <div class="card-head"><div class="card-title">دریافت کانفیگ</div></div>
+    <div class="card-head"><div class="card-title">دریافت کانفیگ{% if xray_links %} OpenVPN{% endif %}</div></div>
     <a class="dl-row" href="/sub/{{ user.token }}/udp">
       <span class="dl-ic">{{ icon("bolt") }}</span>
       <div class="grow">
@@ -108,9 +108,61 @@
   </section>
   {% endif %}
 
+  {% if xray_links %}
+  <section class="card" id="xray-card" data-sub="{{ xray_sub }}" data-name="{{ cfg.PANEL_TITLE }} · {{ user.username }}">
+    <div class="card-head">
+      <div>
+        <div class="card-title">اتصال با V2Ray <span class="muted" style="font-weight:400">(Xray)</span></div>
+        <div class="card-sub">اگر OpenVPN وصل نشد یا کند بود، این راه را امتحان کنید.</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="seg" id="xplatforms" style="margin-bottom:14px">
+        <button data-p="android" type="button">اندروید</button>
+        <button data-p="ios" type="button">آیفون</button>
+        <button data-p="windows" type="button">ویندوز</button>
+        <button data-p="mac" type="button">مک</button>
+      </div>
+      <div class="xapps" id="xapps"></div>
+      <div class="field" style="margin:16px 0 0">
+        <label for="xsub">لینک اشتراک</label>
+        <div class="input-group">
+          <input id="xsub" type="text" class="mono" dir="ltr" readonly value="{{ xray_sub }}" />
+          <button class="btn" type="button" data-copy="{{ xray_sub }}" data-copy-msg="لینک اشتراک کپی شد" title="کپی">{{ icon("copy") }}</button>
+        </div>
+        <div class="hint">اگر دکمه‌ی «افزودن» کار نکرد: در اپ «افزودن اشتراک» (Subscription) را بزنید و همین لینک را وارد کنید. سرورها و حجم باقیمانده خودکار به‌روز می‌شوند.</div>
+      </div>
+    </div>
+    <details class="fold" id="xsub-qr-box">
+      <summary>QR اشتراک {{ icon("chevron-down") }}</summary>
+      <div class="body center">
+        <div class="qr-box" id="xsub-qr"></div>
+        <p class="hint" style="margin:12px 0 0">در اپ روی دستگاه دیگر، «اسکن QR» را بزنید.</p>
+      </div>
+    </details>
+    <details class="fold">
+      <summary>لینک‌های تکی <span class="muted" style="font-weight:400">({{ xray_links | length | fa }})</span> {{ icon("chevron-down") }}</summary>
+      <div class="body">
+        <div class="xlinks" style="margin-top:0">
+          {% for l in xray_links %}
+          <div class="xlink">
+            <span class="xproto sm p-{{ l.protocol }}">{{ {"vless": "VL", "vmess": "VM", "trojan": "TR", "shadowsocks": "SS"}[l.protocol] }}</span>
+            <div class="grow"><div class="t">{{ l.name }}</div><div class="s ltr">{{ l.label }}</div></div>
+            <button class="btn icon sm ghost" type="button" data-xqr="{{ l.link }}" title="QR">{{ icon("qr") }}</button>
+            <button class="btn icon sm ghost" type="button" data-copy="{{ l.link }}" data-copy-msg="لینک کپی شد" title="کپی">{{ icon("copy") }}</button>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="qr-box xl-qr hide" id="xl-qr"></div>
+        <p class="hint" style="margin:10px 0 0">برای اپ‌هایی که اشتراک ندارند: لینک را کپی کنید و در اپ «Import from clipboard» را بزنید.</p>
+      </div>
+    </details>
+  </section>
+  {% endif %}
+
   <section class="card">
     <div class="card-head">
-      <div class="card-title">راهنمای اتصال</div>
+      <div class="card-title">راهنمای اتصال{% if xray_links %} OpenVPN{% endif %}</div>
     </div>
     <div class="card-body">
       <div class="seg" id="platforms" style="margin-bottom:16px">
@@ -206,6 +258,58 @@
       if (this.open && !qrDone) { renderQr(document.getElementById("sub-qr"), location.href, 170); qrDone = true; }
     });
     document.getElementById("copy-link").addEventListener("click", function (ev) { copyText(location.href, "لینک کپی شد", ev.currentTarget); });
+
+    // Xray: one-tap import into the apps people use here
+    var xc = document.getElementById("xray-card");
+    if (xc) {
+      var sub = xc.dataset.sub, name = xc.dataset.name, enc = encodeURIComponent(sub), frag = "#" + encodeURIComponent(name);
+      var APPS = {
+        v2rayng: { name: "v2rayNG", sub: "رایگان و سبک", add: "v2rayng://install-config?url=" + enc + frag, get: "https://github.com/2dust/v2rayNG/releases/latest" },
+        hiddify: { name: "Hiddify", sub: "ساده، با انتخاب خودکار بهترین سرور", add: "hiddify://import/" + sub + frag },
+        streisand: { name: "Streisand", sub: "رایگان", add: "streisand://import/" + sub + frag, get: "https://apps.apple.com/app/id6450534064" },
+        v2box: { name: "V2Box", sub: "رایگان", add: "v2box://install-sub?url=" + enc + "&name=" + encodeURIComponent(name), get: "https://apps.apple.com/app/id6446814690" },
+        v2rayn: { name: "v2rayN", sub: "لینک اشتراک را کپی و در اپ وارد کنید", add: null, get: "https://github.com/2dust/v2rayN/releases/latest" },
+      };
+      var HIDDIFY_GET = {
+        android: "https://play.google.com/store/apps/details?id=app.hiddify.com",
+        ios: "https://apps.apple.com/app/id6596777532",
+        windows: "https://github.com/hiddify/hiddify-app/releases/latest",
+        mac: "https://github.com/hiddify/hiddify-app/releases/latest",
+      };
+      var BY = { android: ["v2rayng", "hiddify"], ios: ["streisand", "v2box", "hiddify"], windows: ["hiddify", "v2rayn"], mac: ["hiddify", "streisand", "v2box"] };
+      var showApps = function (p) {
+        document.querySelectorAll("#xplatforms button").forEach(function (b) { b.classList.toggle("active", b.dataset.p === p); });
+        document.getElementById("xapps").innerHTML = BY[p].map(function (k) {
+          var a = APPS[k], get = k === "hiddify" ? HIDDIFY_GET[p] : a.get;
+          return '<div class="xapp"><span class="dl-ic">' + ic(k === "v2rayn" ? "monitor" : "phone") + '</span>' +
+            '<div class="grow"><div class="t">' + a.name + '</div><div class="s">' + a.sub + '</div></div>' +
+            '<a class="btn sm ghost" href="' + get + '" target="_blank" rel="noopener">نصب</a>' +
+            (a.add ? '<a class="btn sm primary" href="' + a.add + '">' + ic("plus") + ' افزودن</a>'
+                   : '<button class="btn sm primary" type="button" data-copy="' + esc(sub) + '" data-copy-msg="لینک اشتراک کپی شد">' + ic("copy") + ' کپی</button>') +
+            '</div>';
+        }).join("");
+      };
+      document.getElementById("xplatforms").addEventListener("click", function (ev) {
+        var b = ev.target.closest("button[data-p]");
+        if (b) showApps(b.dataset.p);
+      });
+      showApps(platform);
+      document.getElementById("xsub-qr-box").addEventListener("toggle", function () {
+        if (this.open) renderQr(document.getElementById("xsub-qr"), sub, 200);
+      }, { once: true });
+      xc.addEventListener("click", function (ev) {
+        var b = ev.target.closest("[data-xqr]");
+        if (!b) return;
+        var box = document.getElementById("xl-qr");
+        var again = box.dataset.for === b.dataset.xqr && !box.classList.contains("hide");
+        xc.querySelectorAll("[data-xqr].on").forEach(function (x) { x.classList.remove("on"); });
+        if (again) { box.classList.add("hide"); box.dataset.for = ""; return; }
+        box.dataset.for = b.dataset.xqr;
+        box.classList.remove("hide");
+        renderQr(box, b.dataset.xqr, 220);
+        b.classList.add("on");
+      });
+    }
 
     var creds = document.getElementById("sub-creds");
     if (creds) creds.innerHTML = credRow("نام کاربری", creds.dataset.u) + credRow("رمز", creds.dataset.p, { secret: true });

@@ -35,6 +35,7 @@
     <nav class="nav" aria-label="منو">
       <a href="/dashboard" class="{% if active == 'dashboard' %}active{% endif %}">{{ icon("dashboard") }}<span>داشبورد</span></a>
       <a href="/users" class="{% if active == 'users' %}active{% endif %}">{{ icon("users") }}<span>کاربران</span><span class="nav-count hide" id="side-online" title="آنلاین"></span></a>
+      <a href="/xray" class="{% if active == 'xray' %}active{% endif %}">{{ icon("layers") }}<span>Xray</span></a>
       <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">{{ icon("settings") }}<span>تنظیمات</span></a>
       <a href="/about" class="{% if active == 'about' %}active{% endif %}">{{ icon("info") }}<span>درباره</span>{% if new_version %}<span class="nav-new" title="نسخه‌ی جدید آماده است">جدید</span>{% else %}<span class="nav-ver">v{{ app_version }}</span>{% endif %}</a>
     </nav>
@@ -81,7 +82,7 @@
   <a href="/users" data-nav="users" class="{% if active == 'users' %}active{% endif %}">{{ icon("users") }}<span>کاربران</span></a>
   <a href="/users?new=1" class="plus" id="fab-new" aria-label="کاربر جدید" title="کاربر جدید">{{ icon("plus") }}</a>
   <a href="/users?f=online" data-nav="online">{{ icon("wifi") }}<span>آنلاین</span><b class="nav-badge hide" id="nav-online"></b></a>
-  <a href="/settings" class="{% if active in ('settings', 'about') %}active{% endif %}">{{ icon("settings") }}<span>تنظیمات</span>{% if new_version %}<i class="nav-dot" title="نسخه‌ی جدید"></i>{% endif %}</a>
+  <a href="/settings" class="{% if active in ('settings', 'about', 'xray') %}active{% endif %}">{{ icon("settings") }}<span>تنظیمات</span>{% if new_version %}<i class="nav-dot" title="نسخه‌ی جدید"></i>{% endif %}</a>
 </nav>
 
 <div class="scrim" id="scrim"></div>

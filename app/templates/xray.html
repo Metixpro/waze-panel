@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% set active = "xray" %}
+{% block title %}Xray · {{ cfg.PANEL_TITLE }}{% endblock %}
+{% block mobile_title %}Xray{% endblock %}
+
+{% block content %}
+{% from "_icons.html" import icon %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title dup">Xray</h1>
+    <div class="page-sub">VLESS، VMess، Trojan و Shadowsocks برای همان کاربران، کنار OpenVPN</div>
+  </div>
+  <div class="head-actions">
+    <button class="btn icon" id="x-refresh" data-spin type="button" title="به‌روزرسانی" aria-label="به‌روزرسانی">{{ icon("refresh") }}</button>
+    <button class="btn primary" id="x-new" type="button" disabled>{{ icon("plus") }} ورودی جدید</button>
+  </div>
+</div>
+
+<div class="alert warn hide" id="x-missing" style="margin-bottom:16px">
+  {{ icon("alert") }}
+  <span>هسته‌ی Xray روی این سرور نصب نیست. ورودی‌ها ذخیره می‌شوند ولی تا نصب نشود کسی وصل نمی‌شود. روی سرور اجرا کنید: <code dir="ltr">waze-panel xray install</code></span>
+</div>
+
+<section class="card stats" id="x-stats" aria-label="خلاصه">
+  <div class="stat">
+    <div class="stat-label">{{ icon("cpu") }} هسته</div>
+    <div class="stat-value" id="xs-core"><span class="skel" style="width:90px;height:30px"></span></div>
+    <div class="stat-sub" id="xs-core-sub">&nbsp;</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("layers") }} ورودی‌ها</div>
+    <div class="stat-value" id="xs-inbounds"><span class="skel" style="width:40px;height:30px"></span></div>
+    <div class="stat-sub" id="xs-inbounds-sub">&nbsp;</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("users") }} کاربران Xray</div>
+    <div class="stat-value" id="xs-users"><span class="skel" style="width:40px;height:30px"></span></div>
+    <div class="stat-sub" id="xs-users-sub">&nbsp;</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("wifi") }} آنلاین</div>
+    <div class="stat-value" id="xs-online"><span class="skel" style="width:40px;height:30px"></span></div>
+    <div class="stat-sub" id="xs-online-sub">&nbsp;</div>
+  </div>
+</section>
+
+<section class="card mt">
+  <div class="card-head">
+    <div>
+      <div class="card-title">ورودی‌ها</div>
+      <div class="card-sub">هر کاربر برای هر ورودی روشن یک لینک می‌گیرد، به همین ترتیب.</div>
+    </div>
+  </div>
+  <div id="x-list"><div class="card-body"><span class="skel" style="height:56px"></span></div></div>
+</section>
+
+<div class="grid cols-2 mt">
+  <section class="card">
+    <div class="card-head"><div class="card-title">کاربران چطور وصل شوند؟</div></div>
+    <div class="card-body">
+      <ol class="steps">
+        <li><span>همان <b>لینک اشتراک</b> همیشگی را بفرستید؛ بخش Xray داخلش هست و با یک دکمه در اپ اضافه می‌شود.</span></li>
+        <li><span>اپ‌ها: <b>v2rayNG</b> و <b>Hiddify</b> برای اندروید، <b>Streisand</b> و <b>V2Box</b> برای آیفون، <b>v2rayN</b> و <b>Hiddify</b> برای ویندوز.</span></li>
+        <li><span>لینک‌ها خودشان به‌روز می‌شوند: ورودی جدید که بسازید، با «به‌روزرسانی اشتراک» در اپ کاربر اضافه می‌شود.</span></li>
+      </ol>
+    </div>
+  </section>
+  <section class="card">
+    <div class="card-head"><div class="card-title">چند نکته</div></div>
+    <div class="card-body">
+      <ul class="tips">
+        <li>{{ icon("shield-check") }}<span><b>Reality</b> برای شروع بهترین است: دامنه و گواهی نمی‌خواهد و از بیرون شبیه اتصال به همان سایت هدف است.</span></li>
+        <li>{{ icon("globe") }}<span>اگر IP سرور فیلتر شد، ورودی <b>CDN</b> را با یک دامنه‌ی پشت کلادفلر بسازید و آن دامنه را در «آدرس داخل لینک» بنویسید.</span></li>
+        <li>{{ icon("route") }}<span>پورت‌ها روی فایروال همین سرور خودکار باز می‌شوند. اگر دیتاسنتر فایروال جدا دارد، آنجا هم بازشان کنید.</span></li>
+        <li>{{ icon("activity") }}<span>مصرف، سقف حجم، تاریخ انقضا و آنلاین‌بودن با OpenVPN یکی حساب می‌شود؛ کاربری که حجمش تمام شود همان لحظه از Xray هم قطع می‌شود.</span></li>
+      </ul>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block overlays %}
+{% from "_icons.html" import icon %}
+<div class="modal wide" id="x-modal" role="dialog" aria-modal="true" aria-labelledby="x-modal-title">
+  <div id="x-pick-view">
+    <div class="modal-head">
+      <div>
+        <h3 id="x-modal-title">ورودی جدید</h3>
+        <p>یکی را انتخاب کنید؛ بقیه‌ی جزئیات (کلیدها، مسیرها، گواهی) خودکار ساخته می‌شود.</p>
+      </div>
+      <button class="btn icon sm ghost" data-close type="button" title="بستن">{{ icon("x") }}</button>
+    </div>
+    <div class="modal-body">
+      <div class="xpresets" id="x-presets"></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>انصراف</button></div>
+  </div>
+
+  <form id="x-form" class="hide" autocomplete="off" novalidate>
+    <div class="modal-head">
+      <div>
+        <h3 id="x-form-title"></h3>
+        <p id="x-form-sub"></p>
+      </div>
+      <button class="btn icon sm ghost" data-close type="button" title="بستن">{{ icon("x") }}</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row three" data-show="custom">
+        <div class="field">
+          <label for="xf-protocol">پروتکل</label>
+          <select id="xf-protocol" name="protocol"></select>
+        </div>
+        <div class="field">
+          <label for="xf-transport">انتقال</label>
+          <select id="xf-transport" name="transport"></select>
+        </div>
+        <div class="field">
+          <label for="xf-security">امنیت</label>
+          <select id="xf-security" name="security"></select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="xf-name">نام</label>
+          <input id="xf-name" name="name" type="text" maxlength="40" required />
+          <div class="hint">در اپ کاربر به شکل «نام | نام کاربری» دیده می‌شود.</div>
+        </div>
+        <div class="field">
+          <label for="xf-port">پورت</label>
+          <input id="xf-port" name="port" type="number" min="1" max="65535" required />
+          <div class="pg-suggest" id="xf-ports"></div>
+        </div>
+      </div>
+
+      <div class="field" data-show="reality">
+        <label for="xf-sni">سایت هدف</label>
+        <div class="input-group">
+          <input id="xf-sni" name="sni" type="text" dir="ltr" class="mono" list="xf-targets" placeholder="www.microsoft.com" spellcheck="false" />
+          <button class="btn" type="button" id="xf-check" title="بررسی: سرور به این سایت می‌رسد؟">{{ icon("activity") }}</button>
+        </div>
+        <datalist id="xf-targets"></datalist>
+        <div class="hint" id="xf-sni-hint">سایتی خارجی که TLS 1.3 دارد و از داخل ایران باز می‌شود. Reality ظاهر اتصال را شبیه همین سایت می‌کند.</div>
+      </div>
+
+      <div class="field" data-show="tls">
+        <label for="xf-tls-sni">دامنه</label>
+        <input id="xf-tls-sni" name="tls_sni" type="text" dir="ltr" class="mono" placeholder="vpn.example.com" spellcheck="false" />
+        <div class="hint">اگر برای این دامنه گواهی Let's Encrypt روی سرور هست، همان استفاده می‌شود. بدون آن، گواهی خودامضا ساخته و اثرانگشتش داخل لینک‌ها قرار می‌گیرد تا اپ‌ها بدون خطا وصل شوند.</div>
+      </div>
+
+      <div class="field-row" data-show="path">
+        <div class="field">
+          <label for="xf-path">مسیر</label>
+          <input id="xf-path" name="path" type="text" dir="ltr" class="mono" maxlength="64" spellcheck="false" />
+        </div>
+        <div class="field">
+          <label for="xf-host">دامنه (Host) <span class="muted">اختیاری</span></label>
+          <input id="xf-host" name="host" type="text" dir="ltr" class="mono" placeholder="cdn.example.com" spellcheck="false" />
+        </div>
+      </div>
+      <div class="hint" data-show="cdn" style="margin:-8px 0 16px">برای CDN: دامنه را در کلادفلر با ابر نارنجی به IP سرور وصل کنید و همان را در «آدرس داخل لینک» (پایین) هم بنویسید. کلادفلر فقط بعضی پورت‌ها را رد می‌کند: <bdi class="mono">80 8080 8880 2052 2082 2086 2095</bdi> بدون TLS.</div>
+
+      <div class="field" data-show="grpc">
+        <label for="xf-service">نام سرویس gRPC</label>
+        <input id="xf-service" name="service_name" type="text" dir="ltr" class="mono" maxlength="32" spellcheck="false" />
+      </div>
+
+      <div class="field" data-show="ss">
+        <label for="xf-method">رمزنگاری</label>
+        <select id="xf-method" name="method" dir="ltr"></select>
+        <div class="hint">هر کاربر کلید خودش را دارد (Shadowsocks 2022). تغییر رمزنگاری همه‌ی لینک‌های این ورودی را عوض می‌کند.</div>
+      </div>
+
+      <details class="fold bare" id="xf-adv">
+        <summary>تنظیمات بیشتر {{ icon("chevron-down") }}</summary>
+        <div class="body">
+          <div class="field">
+            <label for="xf-address">آدرس داخل لینک <span class="muted">اختیاری</span></label>
+            <input id="xf-address" name="link_address" type="text" dir="ltr" class="mono" spellcheck="false" />
+            <div class="hint">خالی یعنی آدرس سرور (<bdi class="mono">{{ cfg.SERVER_ADDRESS }}</bdi>). برای CDN دامنه، و برای سرور واسط، IP آن سرور را بنویسید.</div>
+          </div>
+          <div class="field-row" data-show="fp">
+            <div class="field">
+              <label for="xf-fp">اثرانگشت مرورگر</label>
+              <select id="xf-fp" name="fingerprint" dir="ltr">
+                <option value="chrome">chrome</option>
+                <option value="firefox">firefox</option>
+                <option value="safari">safari</option>
+                <option value="edge">edge</option>
+                <option value="ios">ios</option>
+                <option value="android">android</option>
+                <option value="random">random</option>
+              </select>
+            </div>
+            <div class="field" data-show="reality">
+              <label for="xf-sid">Short ID</label>
+              <input id="xf-sid" name="short_id" type="text" dir="ltr" class="mono" maxlength="16" placeholder="خودکار" spellcheck="false" />
+            </div>
+          </div>
+          <div class="field" data-show="reality-edit">
+            <label>کلید عمومی (pbk)</label>
+            <div class="input-group">
+              <input id="xf-pbk" type="text" dir="ltr" class="mono" readonly />
+              <button class="btn" type="button" id="xf-pbk-copy" title="کپی">{{ icon("copy") }}</button>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" id="xf-back">{{ icon("arrow-left", "flip") }} برگشت</button>
+      <button type="submit" class="btn primary" id="xf-save">ساخت ورودی</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/xray.js?v={{ asset_v }}"></script>
+{% endblock %}

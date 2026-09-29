@@ -42,6 +42,9 @@ _ADDED_COLUMNS = {
         "tls_key": "TEXT",
         "tls_key_id": "VARCHAR(16)",
         "tls_key_seen_at": "DATETIME",
+        "xray_enabled": "BOOLEAN NOT NULL DEFAULT 1",
+        "xray_uuid": "VARCHAR(36)",
+        "xray_key": "VARCHAR(64)",
     },
     "relay_servers": {
         "source_ip": "VARCHAR(64)",

@@ -14,6 +14,7 @@
 
 <nav class="section-nav" id="section-nav" aria-label="بخش‌های تنظیمات">
   <a href="#s-address">آدرس و برند</a>
+  <a href="#xray-card">Xray</a>
   <a href="#relay-card">سرور واسط ایران</a>
   <a href="#ports-card">پورت‌های پشتیبان</a>
   <a href="#cover-card">پوشش HTTPS</a>
@@ -50,6 +51,25 @@
     </div>
     <div class="card-foot end"><button type="submit" class="btn primary">ذخیره</button></div>
   </form>
+</section>
+
+<section class="sset" id="xray-card">
+  <div class="sset-info">
+    <h2>Xray</h2>
+    <p>VLESS، VMess، Trojan و Shadowsocks کنار OpenVPN؛ با همان کاربران، همان حجم و همان تاریخ انقضا.</p>
+  </div>
+  <a class="card about-link" href="/xray">
+    <span class="xproto">XR</span>
+    <div class="grow">
+      <div class="t">ورودی‌های Xray {% if xray_version %}<span class="mono muted" style="font-weight:400">v{{ xray_version }}</span>{% endif %}</div>
+      <div class="s">
+        {% if xray_state == "missing" %}هسته نصب نیست · <code dir="ltr">waze-panel xray install</code>
+        {% elif not xray_ports %}هنوز ورودی ندارید؛ برای ساخت اولین ورودی بزنید
+        {% else %}{{ xray_ports | length | fa }} ورودی روشن{% if xray_state != "running" %} · <span style="color:var(--red)">متوقف</span>{% endif %}{% endif %}
+      </div>
+    </div>
+    {{ icon("chevron-left") }}
+  </a>
 </section>
 
 <section class="sset" id="relay-card">
@@ -255,6 +275,7 @@
         <div><span class="k">پورت پنل</span><span class="v num">{{ panel_port }}</span></div>
         <div><span class="k">OpenVPN UDP</span><span class="v num">{{ ([udp_port] + udp_extra) | join("، ") }}</span></div>
         <div><span class="k">OpenVPN TCP</span><span class="v num">{{ ([tcp_port] + tcp_extra) | join("، ") }}</span></div>
+        {% if xray_ports %}<div><span class="k">Xray</span><span class="v num">{{ xray_ports | join("، ") }}</span></div>{% endif %}
         <div><span class="k">رمزنگاری</span><span class="v ltr">AES-256-GCM · {{ "tls-crypt" if tls_mode == "shared" else ("tls-crypt + tls-crypt-v2" if tls_mode == "compat" else "tls-crypt-v2") }}</span></div>
       </div>
     </div>

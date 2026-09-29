@@ -10,11 +10,12 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.deps import get_optional_admin
-from app.models import AdminUser, TrafficSample, VpnUser
+from app.models import AdminUser, TrafficSample, VpnUser, XrayInbound
 from app.openvpn import mgmt
 from app.openvpn.scheduler import get_online_sessions
 from app.relays import get_health, ordered_relays, relay_names_by_ip
 from app.templating import templates
+from app.xray import core as xray_core
 
 router = APIRouter()
 
@@ -46,6 +47,14 @@ def _instance_status() -> dict:
             "port": settings.OVPN_TCP_PORT,
             "reachable": mgmt.is_reachable(settings.OVPN_TCP_MGMT_PORT),
         },
+    }
+
+
+def _xray_status(db: Session) -> dict:
+    return {
+        "state": xray_core.service_state(),
+        "version": xray_core.version() if xray_core.installed() else "",
+        "inbounds": db.query(XrayInbound).filter(XrayInbound.enabled.is_(True)).count(),
     }
 
 
@@ -139,6 +148,7 @@ def dashboard_stats(admin: AdminUser = Depends(get_optional_admin), db: Session 
         "chart_values": chart_values,
         "top_today": [{"id": i, "username": n, "bytes": int(b)} for i, n, b in top_rows],
         "instances": _instance_status(),
+        "xray": _xray_status(db),
         "relays": _relay_status(db),
         "system": {
             "cpu_percent": cpu_percent,

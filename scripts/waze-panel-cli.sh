@@ -5,8 +5,9 @@
 #
 #   waze-panel                 interactive menu
 #   waze-panel status          services, URL and user counts
-#   waze-panel restart         restart the panel and both OpenVPN instances
-#   waze-panel logs [panel|udp|tcp]
+#   waze-panel restart         restart the panel, both OpenVPN instances and Xray
+#   waze-panel logs [panel|udp|tcp|xray]
+#   waze-panel xray [install|update|status|restart]
 #   waze-panel reset-password [username]
 #   waze-panel backup [dir]
 #   waze-panel restore <file>
@@ -39,6 +40,8 @@ PREFIX="$(env_get OVPN_SERVICE_PREFIX)"; PREFIX="${PREFIX:-openvpn-server@}"
 SVC_PANEL="waze-panel.service"
 SVC_UDP="${PREFIX}waze-udp"
 SVC_TCP="${PREFIX}waze-tcp"
+SVC_XRAY="waze-xray.service"
+XRAY_BIN="/usr/local/share/waze-panel/xray/xray"
 PY="${APP_DIR}/venv/bin/python"
 
 cli() { (cd "$APP_DIR" && "$PY" -m app.cli "$@"); }
@@ -65,6 +68,11 @@ cmd_status() {
   svc_line "$SVC_PANEL" "Web panel     "
   svc_line "$SVC_UDP"   "OpenVPN UDP $(env_get OVPN_UDP_PORT)"
   svc_line "$SVC_TCP"   "OpenVPN TCP $(env_get OVPN_TCP_PORT)"
+  if [ -x "$XRAY_BIN" ]; then
+    svc_line "$SVC_XRAY" "Xray $("$XRAY_BIN" version 2>/dev/null | awk 'NR==1 {print $2}')   "
+  else
+    echo -e "  ${C_DIM}*${C_RESET} Xray            ${C_DIM}not installed (waze-panel xray install)${C_RESET}"
+  fi
   local db="${DATA_DIR}/waze-panel.db"
   if command -v sqlite3 >/dev/null 2>&1 && [ -f "$db" ]; then
     local total active
@@ -83,15 +91,19 @@ cmd_restart() {
   for s in "$SVC_UDP" "$SVC_TCP" "$SVC_PANEL"; do
     systemctl restart "$s" && ok "restarted $s" || warn "could not restart $s"
   done
+  if [ -x "$XRAY_BIN" ]; then
+    systemctl restart "$SVC_XRAY" && ok "restarted $SVC_XRAY" || warn "could not restart $SVC_XRAY"
+  fi
 }
 
-cmd_stop()  { for s in "$SVC_PANEL" "$SVC_UDP" "$SVC_TCP"; do systemctl stop "$s"; done; ok "stopped"; }
-cmd_start() { for s in "$SVC_UDP" "$SVC_TCP" "$SVC_PANEL"; do systemctl start "$s"; done; ok "started"; }
+cmd_stop()  { for s in "$SVC_PANEL" "$SVC_UDP" "$SVC_TCP" "$SVC_XRAY"; do systemctl stop "$s" 2>/dev/null; done; ok "stopped"; }
+cmd_start() { for s in "$SVC_UDP" "$SVC_TCP" "$SVC_PANEL" "$SVC_XRAY"; do systemctl start "$s" 2>/dev/null; done; ok "started"; }
 
 cmd_logs() {
   case "${1:-panel}" in
     udp) tail -n 100 -f /var/log/openvpn/udp.log ;;
     tcp) tail -n 100 -f /var/log/openvpn/tcp.log ;;
+    xray) journalctl -u "$SVC_XRAY" -n 100 -f ;;
     *)   journalctl -u "$SVC_PANEL" -n 100 -f ;;
   esac
 }
@@ -135,7 +147,7 @@ cmd_restore() {
   case "$answer" in y|Y|yes) ;; *) die "Cancelled." ;; esac
 
   cli backup --out /root >/dev/null 2>&1 && ok "Safety backup of the current state saved in /root"
-  for s in "$SVC_PANEL" "$SVC_UDP" "$SVC_TCP"; do systemctl stop "$s" 2>/dev/null; done
+  for s in "$SVC_PANEL" "$SVC_UDP" "$SVC_TCP" "$SVC_XRAY"; do systemctl stop "$s" 2>/dev/null; done
   tar -xzf "$file" -C / || die "Extraction failed."
   ok "Backup extracted."
   # Re-render services, hook config and permissions from the restored settings.
@@ -152,13 +164,31 @@ cmd_update() {
   rm -f "$tmp"
 }
 
+cmd_xray() {
+  case "${1:-status}" in
+    install|update)
+      shift
+      bash "${APP_DIR}/scripts/xray-install.sh" "$@" ;;
+    restart)
+      cli xray-apply >/dev/null && ok "Xray restarted" || die "Xray did not start; see: waze-panel logs xray" ;;
+    status)
+      if [ -x "$XRAY_BIN" ]; then
+        "$XRAY_BIN" version 2>/dev/null | head -n1
+        svc_line "$SVC_XRAY" "Xray"
+      else
+        warn "Xray is not installed: waze-panel xray install"
+      fi ;;
+    *) die "Usage: waze-panel xray [install|update|status|restart]  (update takes --version vX.Y.Z)" ;;
+  esac
+}
+
 cmd_uninstall() {
   [ -f "${APP_DIR}/uninstall.sh" ] || die "uninstall.sh not found in ${APP_DIR}."
   bash "${APP_DIR}/uninstall.sh"
 }
 
 usage() {
-  sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 menu() {
@@ -168,6 +198,7 @@ menu() {
     echo -e "  ${C_BOLD}2)${C_RESET} Panel logs            ${C_BOLD}6)${C_RESET} Restore backup"
     echo -e "  ${C_BOLD}3)${C_RESET} OpenVPN logs (UDP)    ${C_BOLD}7)${C_RESET} Update to latest"
     echo -e "  ${C_BOLD}4)${C_RESET} Reset admin password  ${C_BOLD}8)${C_RESET} Uninstall"
+    echo -e "  ${C_BOLD}9)${C_RESET} Xray logs"
     echo -e "  ${C_BOLD}0)${C_RESET} Exit\n"
     read -r -p "Choose: " choice </dev/tty || exit 0
     case "$choice" in
@@ -179,6 +210,7 @@ menu() {
       6) read -r -p "Path to backup file: " f </dev/tty; cmd_restore "$f" ;;
       7) cmd_update; exit 0 ;;
       8) cmd_uninstall; exit 0 ;;
+      9) cmd_logs xray ;;
       0|q|"") exit 0 ;;
       *) warn "Unknown option." ;;
     esac
@@ -197,6 +229,7 @@ case "${1:-menu}" in
   backup) cmd_backup "${2:-/root}" ;;
   restore) cmd_restore "${2:-}" ;;
   update) cmd_update ;;
+  xray) shift; cmd_xray "$@" ;;
   version|-v|--version) cli version ;;
   uninstall) cmd_uninstall ;;
   -h|--help|help) usage ;;

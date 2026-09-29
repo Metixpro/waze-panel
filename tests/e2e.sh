@@ -18,6 +18,10 @@
 #     without touching anyone else ("new key")
 #   - forwards extra ports to each instance, and clients move on to the next
 #     port by themselves when their network blocks one
+#   - serves the same user over Xray: a VLESS/VMess/Trojan/Shadowsocks link
+#     per inbound that really carries traffic, counted into the same quota,
+#     shown online, in the subscription, cut off when disabled or out of
+#     data, and replaced by "new links"
 #   - revokes the certificate on delete (TLS-level rejection via the CRL)
 #   - keeps a CRL that won't expire any time soon
 # With RESTARTS=1 it also switches the key mode (shared/compat/per_user) and
@@ -40,6 +44,9 @@ HOST_IP=192.168.231.1; NS_IP=192.168.231.2
 RNS="wazerelay$$"
 RELAY_IP=10.231.10.2; RELAY_OUT_IP=10.231.11.2; RELAY_HOST_IP=10.231.11.1
 TPORT=18765
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+XRAY_BIN=/usr/local/share/waze-panel/xray/xray
+XIDS=()
 WORK="$(mktemp -d)"
 PASS=0; FAIL=0
 
@@ -84,6 +91,9 @@ cleanup() {
   [ -n "${ORIG_PORTS:-}" ] && api -H 'Content-Type: application/json' -d "$ORIG_PORTS" "$PANEL/api/settings/connection/ports" >/dev/null 2>&1
   [ -n "${ORIG_COVER:-}" ] && api -H 'Content-Type: application/json' -d "{\"enabled\":$ORIG_COVER}" "$PANEL/api/settings/connection/cover" >/dev/null 2>&1
   [ -n "${ORIG_MODE:-}" ] && api -H 'Content-Type: application/json' -d "{\"mode\":\"$ORIG_MODE\"}" "$PANEL/api/settings/connection/keys" >/dev/null 2>&1
+  for id in "${XIDS[@]}"; do api -X DELETE "$PANEL/api/xray/inbounds/$id" >/dev/null 2>&1; done
+  rm -f /etc/waze-panel/xray/certs/e2e.example.com-self.*
+  [ -n "${XDEST_ADDED:-}" ] && ip addr del "$XDEST/32" dev lo 2>/dev/null
   [ -n "$USER_ID" ] && api -X DELETE "$PANEL/api/users/$USER_ID" >/dev/null 2>&1
   for id in "${EXTRA_IDS[@]}"; do api -X DELETE "$PANEL/api/users/$id" >/dev/null 2>&1; done
   cli delete-admin --username "$ADMIN" >/dev/null 2>&1
@@ -443,6 +453,135 @@ fi
 check "extra ports can be removed again" [ "$(set_ports "" "")" = 200 ]
 check "...which removes the firewall chain" bash -c "! iptables -t nat -S WAZE_PORTS >/dev/null 2>&1"
 
+# --- Xray ----------------------------------------------------------------------
+not() { ! "$@"; }
+eventually() { for _ in $(seq 1 12); do "$@" && return 0; sleep 1; done; return 1; }
+noproxy() { env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY -u no_proxy -u NO_PROXY "$@"; }
+# "<inbound id> <link>" for each of the user's Xray links
+xlinks_of() { api "$PANEL/api/users/$1" | python3 -c 'import sys, json; [print(l["id"], l["link"]) for l in json.load(sys.stdin)["xray_links"]]'; }
+xlink() { xlinks_of "$USER_ID" | awk -v id="$1" '$1 == id {print $2}'; }   # xlink <inbound id>
+xclient() {  # xclient <link> <socks port>: an Xray client in the namespace
+  python3 "$TESTS_DIR/xray_link2json.py" "$1" "$2" --address "$HOST_IP" > "$WORK/xc-$2.json" || return 1
+  ip netns exec "$NS" env XRAY_LOCATION_ASSET="${XRAY_BIN%/*}" "$XRAY_BIN" run -c "$WORK/xc-$2.json" > "$WORK/xc-$2.log" 2>&1 &
+  echo $! > "$WORK/xc-$2.pid"
+  for _ in $(seq 1 25); do ip netns exec "$NS" ss -Hltn "sport = :$2" | grep -q . && return 0; sleep 0.2; done
+  return 1
+}
+xclient_stop() { [ -f "$WORK/xc-$1.pid" ] && { kill "$(cat "$WORK/xc-$1.pid")" 2>/dev/null; rm -f "$WORK/xc-$1.pid"; }; }
+xfetch() {  # xfetch <link>: 0 if the whole test file comes through it
+  local port=$((31000 + RANDOM % 3000)) size
+  xclient "$1" "$port" || { xclient_stop "$port"; return 1; }
+  size="$(ip netns exec "$NS" env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY \
+    curl -s -o /dev/null -w '%{size_download}' --max-time 15 --socks5-hostname "127.0.0.1:$port" "http://$XDEST:$TPORT/blob" || true)"
+  xclient_stop "$port"
+  [ "${size:-0}" = "$(stat -c %s "$WORK/blob")" ]
+}
+xadd() {  # xadd <json> -> the new inbound's id (empty if refused)
+  api -H 'Content-Type: application/json' -d "$1" "$PANEL/api/xray/inbounds" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("id", ""))' 2>/dev/null
+}
+xadd_code() { api -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "$1" "$PANEL/api/xray/inbounds"; }
+has_xray_online() { api "$PANEL/api/users/$USER_ID" | python3 -c 'import sys, json; sys.exit("xray" not in json.load(sys.stdin)["online_protos"])'; }
+tunnel_open() { ss -Htn state established "( sport = :$1 )" | grep -q "$NS_IP"; }   # tunnel_open <port>
+
+xray_tests() {
+  check "Xray core is running" [ "$(api "$PANEL/api/xray" | jget "['state']")" = running ]
+  # Xray carries nobody to private or reserved addresses, so the test file
+  # comes from a public address of this host (or one borrowed on lo for the test).
+  XDEST="$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 \
+    | python3 -c 'import sys, ipaddress; print(next((a for a in sys.stdin.read().split() if ipaddress.ip_address(a).is_global), ""))')"
+  if [ -z "$XDEST" ]; then XDEST=11.22.33.44; ip addr add "$XDEST/32" dev lo 2>/dev/null && XDEST_ADDED=1; fi
+
+  # REALITY imitates a real TLS 1.3 site; a local one keeps the test offline
+  XTPORT=$((20000 + RANDOM % 5000))
+  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2 -subj /CN=e2e.example.com \
+    -keyout "$WORK/xt.key" -out "$WORK/xt.crt" >/dev/null 2>&1
+  python3 - "$XTPORT" "$WORK/xt.crt" "$WORK/xt.key" <<'PY' &
+import http.server, ssl, sys
+class Page(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"ok")
+    def log_message(self, *a): pass
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), Page)
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.minimum_version = ssl.TLSVersion.TLSv1_3
+ctx.load_cert_chain(sys.argv[2], sys.argv[3]); ctx.set_alpn_protocols(["h2", "http/1.1"])
+srv.socket = ctx.wrap_socket(srv.socket, server_side=True); srv.serve_forever()
+PY
+  echo $! > "$WORK/xtarget.pid"
+
+  local xp=$((25000 + RANDOM % 5000)) real="\"sni\":\"e2e.example.com\",\"target\":\"127.0.0.1:$XTPORT\"" spec n pr tr se op id
+  check "refuses a combination Xray doesn't have (VMess + Reality)" \
+    [ "$(xadd_code "{\"name\":\"x\",\"protocol\":\"vmess\",\"transport\":\"ws\",\"security\":\"reality\",\"port\":$xp}")" = 400 ]
+  check "refuses a port OpenVPN uses" \
+    [ "$(xadd_code "{\"name\":\"x\",\"protocol\":\"vless\",\"transport\":\"ws\",\"security\":\"none\",\"port\":$(env_get OVPN_TCP_PORT)}")" = 400 ]
+  local before; before="$(usage_of)"
+  for spec in \
+    "Reality|vless|raw|reality|{$real}" \
+    "XHTTP|vless|xhttp|reality|{$real,\"path\":\"/e2ex\"}" \
+    "WS|vless|ws|none|{\"path\":\"/e2ew\"}" \
+    "VMess|vmess|ws|none|{\"path\":\"/e2ev\"}" \
+    "Trojan|trojan|raw|tls|{\"sni\":\"e2e.example.com\"}" \
+    "SS|shadowsocks|raw|none|{}"; do
+    IFS='|' read -r n pr tr se op <<< "$spec"
+    id="$(xadd "{\"name\":\"e2e-$n\",\"protocol\":\"$pr\",\"transport\":\"$tr\",\"security\":\"$se\",\"port\":$xp,\"options\":$op}")"
+    check "creates a $pr + $tr + $se inbound (port $xp)" [ -n "$id" ]
+    if [ -n "$id" ]; then
+      XIDS+=("$id")
+      eval "XID_$n=$id"
+      check "...and its link carries traffic" eventually xfetch "$(xlink "$id")"
+    fi
+    xp=$((xp + 1))
+  done
+  [ -n "${XID_Reality:-}" ] || return
+
+  check "shows the user online over Xray" eventually has_xray_online
+  sleep $((POLL + 3))
+  local after; after="$(usage_of)"
+  check "traffic over Xray counts into the same quota ($((after - before)) bytes)" ge $((after - before)) $((${#XIDS[@]} * 4000000))
+
+  local token body
+  token="$(api "$PANEL/api/users/$USER_ID" | jget "['token']")"
+  body="$(curl -s --noproxy '*' -D "$WORK/sub-headers" "$PANEL/sub/$token/xray")"
+  check "subscription has every link (base64, for v2rayNG/Hiddify/...)" \
+    [ "$(echo "$body" | base64 -d 2>/dev/null | grep -c '://')" -ge "${#XIDS[@]}" ]
+  check "...with usage and limit in subscription-userinfo" grep -qi '^subscription-userinfo: upload=0; download=[1-9]' "$WORK/sub-headers"
+
+  local link; link="$(xlink "$XID_Reality")"
+  api -X PATCH -H 'Content-Type: application/json' -d '{"xray_enabled":false}' "$PANEL/api/users/$USER_ID" >/dev/null
+  check "Xray switched off for the user: the link is refused" eventually not xfetch "$link"
+  api -X PATCH -H 'Content-Type: application/json' -d '{"xray_enabled":true}' "$PANEL/api/users/$USER_ID" >/dev/null
+  check "...and works again when switched back on" eventually xfetch "$link"
+
+  # Disabling a user mid-download must cut the open connection too (Xray
+  # itself would let it run, uncounted).
+  head -c 64000000 /dev/zero > "$WORK/big"
+  local xpt; xpt="$(api "$PANEL/api/xray" | python3 -c "import sys, json; print(next(i['port'] for i in json.load(sys.stdin)['inbounds'] if i['id'] == $XID_Reality))")"
+  xclient "$link" 30999
+  ip netns exec "$NS" env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY \
+    curl -s -o /dev/null --limit-rate 300k --max-time 60 --socks5-hostname 127.0.0.1:30999 "http://$XDEST:$TPORT/big" &
+  echo $! > "$WORK/xslow.pid"
+  sleep $((POLL + 2))
+  check "a long download is open over Xray" tunnel_open "$xpt"
+  api -X POST "$PANEL/api/users/$USER_ID/toggle" >/dev/null
+  check "disabling the user closes it mid-download" eventually not tunnel_open "$xpt"
+  kill "$(cat "$WORK/xslow.pid")" 2>/dev/null; rm -f "$WORK/xslow.pid" "$WORK/big"; xclient_stop 30999
+  api -X POST "$PANEL/api/users/$USER_ID/toggle" >/dev/null
+  check "...and the user gets back in when enabled" eventually xfetch "$link"
+
+  api -X POST "$PANEL/api/users/$USER_ID/regenerate_xray" >/dev/null
+  check "'new links' retires the old link" eventually not xfetch "$link"
+  check "...and the new one works" eventually xfetch "$(xlink "$XID_Reality")"
+
+  api -X PATCH -H 'Content-Type: application/json' -d '{"enabled":false}' "$PANEL/api/xray/inbounds/$XID_WS" >/dev/null
+  check "a switched-off inbound leaves the user's links" [ -z "$(xlink "$XID_WS")" ]
+}
+
+echo; echo "== xray =="
+if [ -x "$XRAY_BIN" ]; then
+  xray_tests
+else
+  echo "  Xray is not installed (waze-panel xray install): skipped"
+fi
+
 echo; echo "== quota enforcement =="
 check "reconnects over UDP" start_client udp
 limit_gb="$(python3 -c "print($(usage_of) / 2 / 1024**3)")"
@@ -461,6 +600,9 @@ check "reconnect is refused while over quota" [ "$rc" -ne 0 ]
 check "...and the client is told to stop (AUTH_FAILED/HALT)" grep -qE "AUTH_FAILED|Halt command was pushed" "$WORK/client-udp.log"
 check "...with the reason (data limit reached)" said udp "Data limit reached"
 stop_client udp
+if [ -n "${XID_Reality:-}" ]; then
+  check "...and Xray refuses them too" eventually not xfetch "$(xlink "$XID_Reality")"
+fi
 
 echo; echo "== revocation =="
 cp "$WORK/udp.ovpn" "$WORK/old.ovpn"

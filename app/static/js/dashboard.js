@@ -25,14 +25,14 @@ function areaFill(ctx, area, alpha) {
 
 function renderKpis() {
   const s = stats;
-  const udp = s.online_sessions.filter((x) => x.proto === "udp").length;
-  const tcp = s.online_sessions.length - udp;
-  const n = udp + tcp;
+  const count = (p) => s.online_sessions.filter((x) => x.proto === p).length;
+  const parts = [["udp", "UDP", "var(--accent-fill)"], ["tcp", "TCP", "var(--teal)"], ["xray", "Xray", "var(--violet)"]]
+    .map(([p, label, color]) => ({ label, color, n: count(p) }))
+    .filter((x) => x.label !== "Xray" || x.n || (s.xray && s.xray.inbounds));
+  const n = parts.reduce((a, x) => a + x.n, 0);
   $("#k-online").textContent = fa(s.online_count);
-  $("#k-split").innerHTML = n
-    ? `<i style="width:${(udp / n) * 100}%;background:var(--accent-fill)"></i><i style="width:${(tcp / n) * 100}%;background:var(--teal)"></i>`
-    : "";
-  $("#k-split-legend").innerHTML = `<span><i style="background:var(--accent-fill)"></i>UDP ${fa(udp)}</span><span><i style="background:var(--teal)"></i>TCP ${fa(tcp)}</span>`;
+  $("#k-split").innerHTML = n ? parts.map((x) => `<i style="width:${(x.n / n) * 100}%;background:${x.color}"></i>`).join("") : "";
+  $("#k-split-legend").innerHTML = parts.map((x) => `<span><i style="background:${x.color}"></i>${x.label} ${fa(x.n)}</span>`).join("");
 
   $("#k-today").innerHTML = big(s.today_bytes);
   const vals = s.chart_values;
@@ -181,6 +181,17 @@ function renderServices() {
       <div class="grow"><div class="t">OpenVPN ${p.toUpperCase()}</div><div class="s">${up ? `در حال اجرا · ${fa(count(p))} اتصال` : `متوقف · ببینید: waze-panel logs ${p}`}</div></div>
     </div>`;
   });
+  const x = stats.xray;
+  if (x && (x.inbounds || x.state !== "missing")) {
+    const up = x.state === "running";
+    const sub = x.state === "missing" ? "نصب نشده · waze-panel xray install"
+      : !x.inbounds ? "ورودی روشنی ندارد"
+      : up ? `${fa(x.inbounds)} ورودی · ${fa(count("xray"))} کاربر` : "متوقف · ببینید: waze-panel logs xray";
+    rows.push(`<a class="svc-row" href="/xray">
+      <span class="dot ${up && x.inbounds ? "ok" : x.inbounds ? "bad" : ""}"></span>
+      <div class="grow"><div class="t">Xray ${x.version ? `<span class="mono muted" style="font-weight:400">${esc(x.version)}</span>` : ""}</div><div class="s">${sub}</div></div>
+    </a>`);
+  }
   for (const r of stats.relays || []) {
     const state = r.ok === true ? `سالم · ${fa(r.ms)} میلی‌ثانیه` : r.ok === false ? "قطع است" : "هنوز بررسی نشده";
     rows.push(`<a class="svc-row" href="/settings#relay-card">
@@ -202,7 +213,7 @@ function renderOnline() {
       ${avatar(s.username, true)}
       <div class="grow">
         <div class="name ltr" style="text-align:right">${esc(s.username)}</div>
-        <div class="meta ellip">${s.proto.toUpperCase()} · ${s.via ? `از طریق ${esc(s.via)}` : `<span class="mono ltr">${esc(s.ip)}</span>`}</div>
+        <div class="meta ellip">${s.proto === "xray" ? "Xray" : s.proto.toUpperCase()}${s.via ? ` · از طریق ${esc(s.via)}` : s.ip ? ` · <span class="mono ltr">${esc(s.ip)}</span>` : ""}</div>
       </div>
       <div class="end">${bytesHtml(s.bytes)}<small>${durationFa(stats.now - s.since)}</small></div>
     </a>`).join("");

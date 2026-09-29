@@ -62,6 +62,11 @@ class Settings:
     # loopback-only port of the built-in HTTPS cover site (app/cover.py)
     COVER_PORT: int = int(os.getenv("COVER_PORT", "7543"))
 
+    # --- Xray-core (app/xray) ---
+    XRAY_HOME: Path = Path(os.getenv("XRAY_HOME", "/usr/local/share/waze-panel/xray"))
+    XRAY_API_PORT: int = int(os.getenv("XRAY_API_PORT", "10085"))
+    XRAY_SERVICE: str = os.getenv("XRAY_SERVICE", "waze-xray")
+
     # --- Web panel ---
     PANEL_PORT: int = int(os.getenv("PANEL_PORT", "8000"))
     PANEL_TITLE: str = os.getenv("PANEL_TITLE", "Waze Panel")

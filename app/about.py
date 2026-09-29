@@ -46,6 +46,7 @@ DEVELOPER = {
 CREDITS = [
     {"name": "OpenVPN", "role": "هسته‌ی VPN", "license": "GPL-2.0", "url": "https://openvpn.net"},
     {"name": "Easy-RSA", "role": "صدور و ابطال گواهی‌ها", "license": "GPL-2.0", "url": "https://github.com/OpenVPN/easy-rsa"},
+    {"name": "Xray-core", "role": "VLESS، VMess، Trojan و Shadowsocks", "license": "MPL-2.0", "url": "https://github.com/XTLS/Xray-core"},
     {"name": "FastAPI", "role": "بک‌اند پنل", "license": "MIT", "url": "https://fastapi.tiangolo.com"},
     {"name": "Uvicorn", "role": "وب‌سرور", "license": "BSD-3", "url": "https://www.uvicorn.org"},
     {"name": "SQLAlchemy", "role": "پایگاه‌داده", "license": "MIT", "url": "https://www.sqlalchemy.org"},

@@ -36,7 +36,13 @@ def inline_md(value) -> Markup:
     return Markup(text)
 
 
+def fa_digits(value) -> str:
+    """Persian digits, for numbers inside Persian sentences."""
+    return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+
+
 templates.env.filters["humanize_bytes"] = humanize_bytes
+templates.env.filters["fa"] = fa_digits
 templates.env.filters["inline_md"] = inline_md
 # Live settings object (Settings-page edits show up without a restart) and a
 # per-process asset version so browsers pick up new CSS/JS after an update.

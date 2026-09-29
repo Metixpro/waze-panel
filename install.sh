@@ -4,8 +4,9 @@
 # ---------------------------------------------------------------
 # Sets up a self-contained OpenVPN admin panel on a Debian/Ubuntu server:
 # installs OpenVPN + easy-rsa, generates a CA/server certificate, brings up
-# two OpenVPN instances (UDP and TCP), installs the Waze Panel web app as a
-# systemd service, and prints the admin login details.
+# two OpenVPN instances (UDP and TCP), installs the Xray core (VLESS, VMess,
+# Trojan, Shadowsocks) and the Waze Panel web app as systemd services, and
+# prints the admin login details.
 #
 # Re-running it on a server that already has Waze Panel is a safe in-place
 # update: ports, server address, secrets, the PKI and the admin password
@@ -83,6 +84,8 @@ SERVER_ADDRESS="${SERVER_ADDRESS:-}"
 SETUP_NGINX="${SETUP_NGINX:-}"
 DOMAIN="${DOMAIN:-}"
 SKIP_NGINX=0
+INSTALL_XRAY=1
+XRAY_API_PORT="${XRAY_API_PORT:-}"
 
 usage() {
   cat <<EOF
@@ -98,6 +101,8 @@ Waze Panel installer / updater
   --server-address ADDR public IP or domain clients will connect to (default: auto-detected)
   --domain DOMAIN       set up Nginx + Let's Encrypt on this domain for the panel
   --no-nginx            never configure Nginx, even if --domain is given
+  --no-xray             don't install / update the Xray core (VLESS, VMess,
+                        Trojan, Shadowsocks); 'waze-panel xray install' later
   -h, --help            show this help
 
 Running it again on an existing install updates it in place and keeps
@@ -116,6 +121,7 @@ while [ $# -gt 0 ]; do
     --server-address) SERVER_ADDRESS="$2"; shift ;;
     --domain) DOMAIN="$2"; SETUP_NGINX=1; shift ;;
     --no-nginx) SKIP_NGINX=1 ;;
+    --no-xray) INSTALL_XRAY=0 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown flag: $1 (see --help)" ;;
   esac
@@ -239,7 +245,7 @@ cat <<'BANNER'
     \  / (_| |/ /  __/\ V  /| |  | (_| | | | |  __/| |
      \/ \__,_/___\___| \_/ |_|   \__,_|_| |_|\___||_|
 
-        OpenVPN admin panel - installer
+     OpenVPN + Xray admin panel - installer
 BANNER
 echo -e "${C_RESET}"
 
@@ -259,6 +265,7 @@ if [ "$UPGRADE" -eq 1 ]; then
   INTERNAL_TOKEN="$(env_get INTERNAL_TOKEN)"
   EXISTING_SUB_URL="$(env_get SUBSCRIPTION_BASE_URL)"
   EXISTING_TITLE="$(env_get PANEL_TITLE)"
+  XRAY_API_PORT="${XRAY_API_PORT:-$(env_get XRAY_API_PORT)}"
   if [ -z "$DOMAIN" ] && [ -f /etc/nginx/sites-enabled/waze-panel.conf ]; then
     DOMAIN="$(grep -m1 -oP 'server_name\s+\K[^; ]+' /etc/nginx/sites-enabled/waze-panel.conf || true)"
     [ -n "$DOMAIN" ] && SETUP_NGINX=1
@@ -564,6 +571,9 @@ if [ "$SETUP_NGINX" -eq 1 ] && [ -n "$DOMAIN" ] && [ -z "$SUBSCRIPTION_BASE_URL"
   SUBSCRIPTION_BASE_URL="http://${DOMAIN}"
 fi
 
+# Xray's stats/users API, on loopback only
+[ -n "$XRAY_API_PORT" ] || XRAY_API_PORT="$(free_port tcp 10085 10185 10285)"
+
 umask 077
 cat > "${DATA_DIR}/panel.env" <<EOF
 SECRET_KEY="${SECRET_KEY}"
@@ -584,6 +594,7 @@ PANEL_PORT="${PANEL_PORT}"
 PANEL_TITLE="${EXISTING_TITLE:-Waze Panel}"
 SUBSCRIPTION_BASE_URL="${SUBSCRIPTION_BASE_URL}"
 TRAFFIC_POLL_INTERVAL_SECONDS="20"
+XRAY_API_PORT="${XRAY_API_PORT}"
 EOF
 chmod 600 "${DATA_DIR}/panel.env"
 
@@ -635,6 +646,15 @@ else
       || die "Failed to create the admin user."
     log_ok "Password set for admin '${ADMIN_USER}'."
   fi
+fi
+
+# ============================================================
+# Xray core
+# ============================================================
+if [ "$INSTALL_XRAY" -eq 1 ]; then
+  log_step "Installing the Xray core (VLESS, VMess, Trojan, Shadowsocks)"
+  bash "${APP_DIR}/scripts/xray-install.sh" \
+    || log_warn "Xray was not installed; OpenVPN works without it. Try later: waze-panel xray install"
 fi
 
 # ============================================================
@@ -812,6 +832,9 @@ fi
 echo
 echo -e "  ${C_BOLD}OpenVPN UDP port:${C_RESET} ${UDP_PORT}"
 echo -e "  ${C_BOLD}OpenVPN TCP port:${C_RESET} ${TCP_PORT}"
+if [ -x /usr/local/share/waze-panel/xray/xray ]; then
+  echo -e "  ${C_BOLD}Xray core:${C_RESET}        $(/usr/local/share/waze-panel/xray/xray version 2>/dev/null | awk 'NR==1 {print $2}')  (add VLESS/Reality inbounds on the panel's Xray page)"
+fi
 echo
 [ -z "$PASSWORD_NOTE" ] && echo -e "  Save this information somewhere safe; it will not be shown again."
 echo -e "  Manage the server with:  ${C_BOLD}waze-panel${C_RESET}   (status, logs, backup, update, ...)"

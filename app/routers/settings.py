@@ -10,12 +10,13 @@ from app.backup import create_backup
 from app.config import settings
 from app.database import get_db
 from app.deps import get_optional_admin
-from app.models import AdminUser, VpnUser
+from app.models import AdminUser, VpnUser, XrayInbound
 from app.openvpn import certs, tlscrypt
 from app.openvpn.templates import build_shared_ovpn
 from app.security import hash_password, verify_password
 from app.settings_store import set_value
 from app.templating import templates
+from app.xray import core as xray_core
 
 router = APIRouter()
 
@@ -67,6 +68,9 @@ def settings_page(
             "tls_mode": tlscrypt.get_mode(db),
             "udp_extra": connection.extra_ports(db, "udp"),
             "tcp_extra": connection.extra_ports(db, "tcp"),
+            "xray_ports": [ib.port for ib in db.query(XrayInbound).filter(XrayInbound.enabled.is_(True)).order_by(XrayInbound.position, XrayInbound.id)],
+            "xray_state": xray_core.service_state(),
+            "xray_version": xray_core.version() if xray_core.installed() else "",
         },
     )
 

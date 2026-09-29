@@ -55,6 +55,11 @@ def create_backup() -> tuple[str, bytes]:
             if p.exists():
                 tar.add(str(p), arcname=_arc(p))
 
+        # Xray's self-signed certificates: users' links pin their hash
+        certs = settings.DATA_DIR / "xray" / "certs"
+        if certs.is_dir():
+            tar.add(str(certs), arcname=_arc(certs))
+
         if settings.EASYRSA_PKI_DIR.exists():
             tar.add(str(settings.EASYRSA_PKI_DIR), arcname=_arc(settings.EASYRSA_PKI_DIR))
 
