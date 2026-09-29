@@ -63,7 +63,9 @@ function seenCell(u) {
 
 function noteLine(u) {
   const bits = [];
-  if (u.auth_mode && u.auth_mode !== "cert") bits.push(`<span class="pw-tag">${ic("lock")}${AUTH[u.auth_mode].label}</span>`);
+  if (!u.openvpn_enabled) bits.push(`<span class="svc-tag">${ic("layers")}فقط Xray</span>`);
+  else if (!u.xray_enabled) bits.push(`<span class="svc-tag">${ic("shield")}فقط OpenVPN</span>`);
+  if (u.openvpn_enabled && u.auth_mode && u.auth_mode !== "cert") bits.push(`<span class="pw-tag">${ic("lock")}${AUTH[u.auth_mode].label}</span>`);
   bits.push(u.note ? esc(u.note) : `ساخته شده ${relTime(u.created_at)}`);
   return bits.join(" · ");
 }
@@ -84,7 +86,9 @@ function rowHtml(u) {
     <div class="cell c-seen">${seenCell(u)}</div>
     <div class="acts">
       <button class="btn icon sm ghost" type="button" data-copy="${esc(u.sub_link)}" data-copy-msg="لینک اشتراک کپی شد" title="کپی لینک اشتراک">${ic("link")}</button>
-      <a class="btn icon sm ghost js-stop" href="/api/users/${u.id}/config/udp" title="دانلود کانفیگ UDP">${ic("download")}</a>
+      ${u.openvpn_enabled
+        ? `<a class="btn icon sm ghost js-stop" href="/api/users/${u.id}/config/udp" title="دانلود کانفیگ UDP">${ic("download")}</a>`
+        : `<button class="btn icon sm ghost" type="button" data-copy="${esc(u.sub_link)}/xray" data-copy-msg="لینک اشتراک Xray کپی شد" title="کپی اشتراک Xray">${ic("layers")}</button>`}
       <label class="switch js-stop" title="${u.enabled ? "غیرفعال کردن" : "فعال کردن"}">
         <input type="checkbox" class="js-toggle" data-id="${u.id}" ${u.enabled ? "checked" : ""} aria-label="فعال بودن ${esc(u.username)}" /><span></span>
       </label>
@@ -168,8 +172,9 @@ function drawerHtml(u) {
     <div class="dactions">
       <button class="btn primary" type="button" data-act="share">${ic("send")} ارسال</button>
       <button class="btn" type="button" data-copy="${esc(u.sub_link)}" data-copy-msg="لینک اشتراک کپی شد">${ic("link")} لینک</button>
-      <a class="btn" href="/api/users/${u.id}/config/udp">${ic("download")} UDP</a>
-      <a class="btn" href="/api/users/${u.id}/config/tcp">${ic("download")} TCP</a>
+      ${u.openvpn_enabled ? `<a class="btn" href="/api/users/${u.id}/config/udp">${ic("download")} UDP</a>
+      <a class="btn" href="/api/users/${u.id}/config/tcp">${ic("download")} TCP</a>` : ""}
+      ${u.xray_enabled ? `<button class="btn" type="button" data-copy="${esc(u.xray_sub)}" data-copy-msg="لینک اشتراک Xray کپی شد">${ic("layers")} Xray</button>` : ""}
     </div>
     ${alert}
   </div>
@@ -207,8 +212,9 @@ function drawerHtml(u) {
     </div>
   </div>
 
-  ${loginSection(u)}
-  ${keySection(u)}
+  ${servicesSection(u)}
+  ${u.openvpn_enabled ? loginSection(u) : ""}
+  ${u.openvpn_enabled ? keySection(u) : ""}
 
   <div class="dsec">
     <div class="dsec-title">لینک اشتراک</div>
@@ -315,36 +321,81 @@ function keySection(u) {
     </div>`;
 }
 
-// Xray: one share link per enabled inbound, the auto-updating Xray
+/* ------------------------------------------------ services and inbounds */
+// Which Xray inbounds a user gets: null = all of them, also ones created
+// later; else a list of ids. In "all" the chips sit neutral and "all" is lit;
+// picking a chip narrows the user down to it, further clicks add/remove.
+function inboundChips(list, selected) {
+  const all = selected === null || selected === undefined;
+  const on = new Set(all ? [] : selected);
+  const shown = list.filter((i) => i.enabled || on.has(i.id));
+  if (!shown.length) {
+    return `<div class="hint" style="margin:0">هنوز ورودی Xray ندارید؛ با ساختن اولین ورودی در صفحه‌ی <a class="link" href="/xray">Xray</a> لینکش خودکار به کاربر اضافه می‌شود.</div>`;
+  }
+  return `<div class="chips ib-chips" role="group" aria-label="ورودی‌های Xray">
+      <button type="button" class="chip all ${all ? "active" : ""}" data-ib="all" aria-pressed="${all}">همه‌ی ورودی‌ها</button>
+      ${shown.map((i) => `<button type="button" class="chip ${on.has(i.id) ? "active" : ""}" data-ib="${i.id}" aria-pressed="${on.has(i.id)}" title="${esc(i.label)}">${esc(i.name)}</button>`).join("")}
+    </div>
+    <div class="hint">${all ? "ورودی‌هایی که بعدا بسازید هم خودکار به این کاربر اضافه می‌شوند." : "فقط ورودی‌های انتخاب‌شده؛ ورودی‌های جدید اضافه نمی‌شوند."}</div>`;
+}
+
+// next selection after a click on chip `key` ("all" or an id); undefined = refuse
+function nextInbounds(selected, key) {
+  if (key === "all") return null;
+  const id = +key;
+  if (selected === null || selected === undefined) return [id];
+  const ids = selected.filter((x) => x !== id);
+  if (ids.length === selected.length) ids.push(id);
+  if (!ids.length) {
+    toast("دست‌کم یک ورودی بماند، یا «همه‌ی ورودی‌ها» را بزنید", "error");
+    return undefined;
+  }
+  return ids;
+}
+
+function inboundSummary(u) {
+  const enabled = (u.xray_inbound_list || []).filter((i) => i.enabled);
+  if (u.xray_inbounds === null) return enabled.length ? `همه‌ی ورودی‌ها (${fa(enabled.length)})، ورودی‌های جدید هم` : "همه‌ی ورودی‌ها، از اولین ورودی";
+  const mine = enabled.filter((i) => u.xray_inbounds.includes(i.id));
+  return mine.length ? mine.map((i) => i.name).join("، ") : "هیچ ورودی روشنی انتخاب نشده";
+}
+
+function servicesSection(u) {
+  const ovpn = u.openvpn_enabled;
+  const xr = u.xray_enabled;
+  return `
+    <div class="dsec">
+      <div class="dsec-title">سرویس‌ها</div>
+      <div class="setting-row">
+        <div><div class="t">OpenVPN</div><div class="s">${ovpn ? `UDP و TCP · ورود با ${AUTH[u.auth_mode || "cert"].label}` : "خاموش: فایل‌های کانفیگ این کاربر وصل نمی‌شوند."}</div></div>
+        <label class="switch"><input type="checkbox" data-act="svc" data-svc="openvpn_enabled" ${ovpn ? "checked" : ""} aria-label="OpenVPN" /><span></span></label>
+      </div>
+      <div class="setting-row">
+        <div><div class="t">Xray</div><div class="s">${xr ? esc(inboundSummary(u)) : "خاموش: لینک‌های VLESS، VMess، Trojan و Shadowsocks کار نمی‌کنند."}</div></div>
+        <label class="switch"><input type="checkbox" data-act="svc" data-svc="xray_enabled" ${xr ? "checked" : ""} aria-label="Xray" /><span></span></label>
+      </div>
+      ${xr ? `<div class="ib-pick" id="d-ib">${inboundChips(u.xray_inbound_list || [], u.xray_inbounds)}</div>` : ""}
+    </div>`;
+}
+
+// Xray: one share link per inbound the user has, the auto-updating Xray
 // subscription, and new credentials if a link leaked.
 const XPROTO_TAG = { vless: "VL", vmess: "VM", trojan: "TR", shadowsocks: "SS" };
 function xraySection(u) {
-  const toggle = `
-      <div class="setting-row">
-        <div><div class="t">دسترسی Xray</div><div class="s">${u.xray_enabled ? "لینک‌های VLESS، VMess، Trojan و Shadowsocks با همین حجم و تاریخ." : "خاموش: لینک‌های Xray این کاربر کار نمی‌کنند؛ OpenVPN دست نمی‌خورد."}</div></div>
-        <label class="switch"><input type="checkbox" data-act="xray-toggle" ${u.xray_enabled ? "checked" : ""} aria-label="دسترسی Xray" /><span></span></label>
-      </div>`;
-  if (!u.xray_inbounds) {
-    return `
-    <div class="dsec">
-      <div class="dsec-title">Xray</div>
-      <div class="hint" style="margin:0">هنوز ورودی Xray ندارید. <a class="link" href="/xray">ساخت ورودی ${ic("chevron-left")}</a></div>
-    </div>`;
-  }
-  if (!u.xray_enabled) return `<div class="dsec"><div class="dsec-title">Xray</div>${toggle}</div>`;
+  if (!u.xray_enabled) return "";
   const links = u.xray_links || [];
+  if (!links.length) return "";
   const rows = links.map((l, i) => `
       <div class="xlink">
         <span class="xproto sm p-${l.protocol}">${XPROTO_TAG[l.protocol]}</span>
-        <div class="grow"><div class="t">${esc(l.name)}</div><div class="s ltr">${esc(l.label)}</div></div>
+        <div class="grow"><div class="t">${esc(l.name)}${l.via ? ` <span class="via">از طریق ${esc(l.via)}</span>` : ""}</div><div class="s ltr">${esc(l.label)}</div></div>
         <button class="btn icon sm ghost" type="button" data-act="xl-qr" data-i="${i}" title="QR">${ic("qr")}</button>
         <button class="btn icon sm ghost" type="button" data-copy="${esc(l.link)}" data-copy-msg="لینک ${esc(l.name)} کپی شد" title="کپی">${ic("copy")}</button>
       </div>`).join("");
   return `
     <div class="dsec">
-      <div class="dsec-title">Xray <span class="muted">${fa(links.length)} لینک</span></div>
-      ${toggle}
-      <div class="xlinks">${rows}</div>
+      <div class="dsec-title">لینک‌های Xray <span class="muted">${fa(links.length)} لینک</span></div>
+      <div class="xlinks" style="margin-top:0">${rows}</div>
       <div class="qr-box xl-qr hide" id="xl-qr"></div>
       <div class="field" style="margin:14px 0 0">
         <label>لینک اشتراک Xray</label>
@@ -436,7 +487,7 @@ $("#drawer").addEventListener("overlay-close", () => { currentId = null; current
 
 $("#drawer").addEventListener("click", async (ev) => {
   const el = ev.target.closest("[data-act]");
-  if (!el || el.dataset.act === "toggle" || el.dataset.act === "xray-toggle") return;
+  if (!el || el.dataset.act === "toggle" || el.dataset.act === "svc") return;
   const act = el.dataset.act;
   const u = currentUser;
   try {
@@ -513,11 +564,32 @@ $("#drawer").addEventListener("click", async (ev) => {
   }
 });
 
+$("#drawer").addEventListener("click", async (ev) => {
+  const chip = ev.target.closest("#d-ib [data-ib]");
+  if (!chip || !currentUser) return;
+  const next = nextInbounds(currentUser.xray_inbounds, chip.dataset.ib);
+  if (next === undefined || JSON.stringify(next) === JSON.stringify(currentUser.xray_inbounds)) return;
+  try {
+    await patchUser({ xray_inbounds: next }, next === null ? "همه‌ی ورودی‌ها، ورودی‌های جدید هم" : "ورودی‌های Xray این کاربر به‌روز شد");
+  } catch (e) {
+    toast(e.message, "error");
+  }
+});
+
+const SVC_NAME = { openvpn_enabled: "OpenVPN", xray_enabled: "Xray" };
 $("#drawer").addEventListener("change", async (ev) => {
-  if (ev.target.dataset.act === "xray-toggle") {
+  if (ev.target.dataset.act === "svc") {
+    const key = ev.target.dataset.svc;
     const on = ev.target.checked;
+    if (!on && !(await confirmDialog({
+      title: `${SVC_NAME[key]} برای ${currentUser.username} خاموش شود؟`,
+      message: key === "openvpn_enabled"
+        ? "فایل‌های کانفیگ OpenVPN این کاربر دیگر وصل نمی‌شوند و اگر الان وصل است قطع می‌شود. Xray دست نمی‌خورد."
+        : "لینک‌های Xray این کاربر دیگر وصل نمی‌شوند و اگر الان وصل است قطع می‌شود. OpenVPN دست نمی‌خورد.",
+      ok: "خاموش کن",
+    }))) { ev.target.checked = true; return; }
     try {
-      await patchUser({ xray_enabled: on }, on ? "Xray برای این کاربر روشن شد" : "Xray برای این کاربر خاموش شد");
+      await patchUser({ [key]: on }, `${SVC_NAME[key]} ${on ? "روشن" : "خاموش"} شد`);
     } catch (e) {
       ev.target.checked = !on;
       toast(e.message, "error");
@@ -587,6 +659,49 @@ function setCreateMode(mode) {
   try { localStorage.setItem("waze-auth-mode", createMode); } catch (e) {}
 }
 
+// services for the next user: remembered like the login mode
+let createSvc = { openvpn: true, xray: true, inbounds: null };
+let inboundList = [];
+
+function paintCreateServices() {
+  $$("#c-svcs .svc").forEach((b) => b.setAttribute("aria-pressed", String(createSvc[b.dataset.svc])));
+  $("#c-ovpn-fields").classList.toggle("hide", !createSvc.openvpn);
+  $("#c-ib").innerHTML = createSvc.xray ? inboundChips(inboundList, createSvc.inbounds) : "";
+  try { localStorage.setItem("waze-services", JSON.stringify(createSvc)); } catch (e) {}
+}
+
+async function loadInboundChoices() {
+  try {
+    inboundList = (await api("/api/xray/inbounds")).inbounds;
+  } catch (e) {
+    inboundList = [];
+  }
+  if (createSvc.inbounds) {
+    const known = new Set(inboundList.map((i) => i.id));
+    createSvc.inbounds = createSvc.inbounds.filter((id) => known.has(id));
+    if (!createSvc.inbounds.length) createSvc.inbounds = null;
+  }
+  paintCreateServices();
+}
+
+$("#c-svcs").addEventListener("click", (ev) => {
+  const b = ev.target.closest(".svc");
+  if (!b) return;
+  const key = b.dataset.svc;
+  const other = key === "openvpn" ? "xray" : "openvpn";
+  if (createSvc[key] && !createSvc[other]) return toast("دست‌کم یکی از OpenVPN یا Xray باید روشن باشد", "error");
+  createSvc[key] = !createSvc[key];
+  paintCreateServices();
+});
+$("#c-ib").addEventListener("click", (ev) => {
+  const chip = ev.target.closest("[data-ib]");
+  if (!chip) return;
+  const next = nextInbounds(createSvc.inbounds, chip.dataset.ib);
+  if (next === undefined) return;
+  createSvc.inbounds = next;
+  paintCreateServices();
+});
+
 function resetCreateForm() {
   $("#create-form").reset();
   $$("#presets .chip").forEach((c) => c.classList.remove("active"));
@@ -594,6 +709,12 @@ function resetCreateForm() {
   try { mode = localStorage.getItem("waze-auth-mode") || "cert"; } catch (e) {}
   $("#c-pass").value = "";
   setCreateMode(mode); // the admin's last choice: resellers tend to stick to one
+  try {
+    const saved = JSON.parse(localStorage.getItem("waze-services") || "null");
+    if (saved && (saved.openvpn || saved.xray)) createSvc = { openvpn: !!saved.openvpn, xray: !!saved.xray, inbounds: saved.inbounds || null };
+  } catch (e) {}
+  paintCreateServices();
+  loadInboundChoices();
   $("#create-form-view").classList.remove("hide");
   $("#create-done-view").classList.add("hide");
 }
@@ -638,6 +759,9 @@ $("#create-form").addEventListener("submit", async (ev) => {
     auth_mode: createMode,
     password: createMode !== "cert" ? $("#c-pass").value.trim() : null,
     max_devices: f.get("max_devices") ? +f.get("max_devices") : 0,
+    openvpn_enabled: createSvc.openvpn,
+    xray_enabled: createSvc.xray,
+    xray_inbounds: createSvc.inbounds,
   };
   await withBusy($("#create-submit"), async () => {
     try {
@@ -647,8 +771,11 @@ $("#create-form").addEventListener("submit", async (ev) => {
       $("#done-link").value = u.sub_link;
       $("#done-udp").href = `/api/users/${u.id}/config/udp`;
       $("#done-tcp").href = `/api/users/${u.id}/config/tcp`;
+      $("#done-udp").classList.toggle("hide", !u.openvpn_enabled);
+      $("#done-tcp").classList.toggle("hide", !u.openvpn_enabled);
+      $("#done-xray").classList.toggle("hide", !u.xray_enabled);
       const creds = $("#done-creds");
-      creds.classList.toggle("hide", u.auth_mode === "cert");
+      creds.classList.toggle("hide", u.auth_mode === "cert" || !u.openvpn_enabled);
       creds.innerHTML = u.auth_mode === "cert" ? "" : credRow("نام کاربری", u.username) + credRow("رمز", u.password);
       $("#done-qr").innerHTML = "";
       $("#create-done-view details").open = false;
@@ -665,6 +792,7 @@ $("#create-done-view details").addEventListener("toggle", (ev) => {
   if (ev.target.open && lastCreated && !$("#done-qr").innerHTML) renderQr($("#done-qr"), lastCreated.sub_link, 164);
 });
 $("#done-copy").addEventListener("click", (ev) => copyText($("#done-link").value, "لینک اشتراک کپی شد", ev.currentTarget));
+$("#done-xray").addEventListener("click", (ev) => { if (lastCreated) copyText(`${lastCreated.sub_link}/xray`, "لینک اشتراک Xray کپی شد", ev.currentTarget); });
 $("#done-share").addEventListener("click", () => { if (lastCreated) shareOrCopy(shareText(lastCreated), lastCreated.username); });
 $("#done-another").addEventListener("click", () => {
   resetCreateForm();

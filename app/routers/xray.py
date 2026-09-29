@@ -15,7 +15,7 @@ from app import connection
 from app.config import settings
 from app.database import get_db
 from app.deps import get_optional_admin
-from app.models import AdminUser, VpnUser, XrayInbound
+from app.models import AdminUser, RelayServer, VpnUser, XrayInbound
 from app.templating import templates
 from app.xray import core, links, presets
 
@@ -58,7 +58,7 @@ def _admin(admin: AdminUser | None) -> None:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
-def _serialize(ib: XrayInbound, listening: set[int] | None = None) -> dict:
+def _serialize(ib: XrayInbound, listening: set[int] | None = None, users: list[VpnUser] | None = None) -> dict:
     opts = core.options(ib)
     out = {
         "id": ib.id,
@@ -74,6 +74,9 @@ def _serialize(ib: XrayInbound, listening: set[int] | None = None) -> dict:
     }
     if listening is not None:
         out["listening"] = ib.port in listening
+    if users is not None:
+        # who has this inbound: active users with Xray, limited to it or not
+        out["users"] = sum(1 for u in users if u.uses_inbound(ib.id))
     if ib.security == "tls":
         try:
             out["cert"] = "self_signed" if core.tls_files(ib)[2] else "letsencrypt"
@@ -129,12 +132,14 @@ def xray_status(admin: AdminUser | None = Depends(get_optional_admin), db: Sessi
     inbounds = db.query(XrayInbound).order_by(XrayInbound.position, XrayInbound.id).all()
     online = core.online_sessions()
     listening = connection.listening_ports("tcp") if inbounds else set()
+    xray_users = [u for u in db.query(VpnUser).all() if u.xray_enabled]
+    active = [u for u in xray_users if u.is_usable()]
     return {
         "state": core.service_state(),
         "version": core.version() if core.installed() else "",
-        "inbounds": [_serialize(ib, listening) for ib in inbounds],
-        "users": db.query(VpnUser).filter(VpnUser.xray_enabled.is_(True)).count(),
-        "users_active": sum(1 for u in db.query(VpnUser).all() if u.xray_enabled and u.is_usable()),
+        "inbounds": [_serialize(ib, listening, active) for ib in inbounds],
+        "users": len(xray_users),
+        "users_active": len(active),
         "online": len(online),
         "online_bytes": sum(s["bytes"] for s in online),
         "presets": presets.PRESETS,
@@ -143,7 +148,23 @@ def xray_status(admin: AdminUser | None = Depends(get_optional_admin), db: Sessi
         "ss_methods": presets.SS_METHODS,
         "suggest_ports": {"tls": suggest_ports(db, TLS_PORTS), "http": suggest_ports(db, HTTP_PORTS)},
         "server_address": settings.SERVER_ADDRESS,
+        # relays that sync (and so carry Xray)
+        "relays": sum(1 for r in db.query(RelayServer).filter(RelayServer.enabled.is_(True)) if r.synced_at),
     }
+
+
+def inbound_choices(db: Session) -> list[dict]:
+    """What a user can be limited to (users page: create form, drawer)."""
+    return [
+        {"id": ib.id, "name": ib.name, "label": links.label(ib), "protocol": ib.protocol, "enabled": ib.enabled}
+        for ib in db.query(XrayInbound).order_by(XrayInbound.position, XrayInbound.id)
+    ]
+
+
+@router.get("/api/xray/inbounds")
+def list_inbounds(admin: AdminUser | None = Depends(get_optional_admin), db: Session = Depends(get_db)):
+    _admin(admin)
+    return {"inbounds": inbound_choices(db), "installed": core.installed()}
 
 
 def _apply(db: Session, force: bool = False) -> str:

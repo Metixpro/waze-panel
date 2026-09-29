@@ -97,6 +97,8 @@ def clean_options(protocol: str, transport: str, security: str, raw: dict) -> di
     if link_address and not _HOST_RE.match(link_address):
         raise InboundError("آدرس داخل لینک باید IP یا دامنه باشد.")
     out["link_address"] = link_address
+    # also hand out a link through each relay server (ignored with a custom address)
+    out["relay"] = raw.get("relay", True) is not False
 
     if security == "reality":
         sni = (raw.get("sni") or REALITY_TARGETS[0]).strip().lower()

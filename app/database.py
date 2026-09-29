@@ -45,9 +45,14 @@ _ADDED_COLUMNS = {
         "xray_enabled": "BOOLEAN NOT NULL DEFAULT 1",
         "xray_uuid": "VARCHAR(36)",
         "xray_key": "VARCHAR(64)",
+        "openvpn_enabled": "BOOLEAN NOT NULL DEFAULT 1",
+        "xray_inbounds": "TEXT",
     },
     "relay_servers": {
         "source_ip": "VARCHAR(64)",
+        "sync_token": "VARCHAR(64)",
+        "synced_at": "DATETIME",
+        "forwarded": "TEXT",
     },
 }
 

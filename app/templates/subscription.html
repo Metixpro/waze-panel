@@ -73,6 +73,7 @@
   </div>
   {% endif %}
 
+  {% if openvpn %}
   <section class="card">
     <div class="card-head"><div class="card-title">دریافت کانفیگ{% if xray_links %} OpenVPN{% endif %}</div></div>
     <a class="dl-row" href="/sub/{{ user.token }}/udp">
@@ -93,8 +94,9 @@
     </a>
     <div class="card-foot">اگر با UDP وصل نشدید، کانفیگ TCP را امتحان کنید.</div>
   </section>
+  {% endif %}
 
-  {% if auth_mode != "cert" %}
+  {% if openvpn and auth_mode != "cert" %}
   <section class="card">
     <div class="card-head"><div class="card-title">مشخصات ورود</div></div>
     <div class="card-body">
@@ -113,7 +115,7 @@
     <div class="card-head">
       <div>
         <div class="card-title">اتصال با V2Ray <span class="muted" style="font-weight:400">(Xray)</span></div>
-        <div class="card-sub">اگر OpenVPN وصل نشد یا کند بود، این راه را امتحان کنید.</div>
+        <div class="card-sub">{% if openvpn %}اگر OpenVPN وصل نشد یا کند بود، این راه را امتحان کنید.{% else %}اپ دستگاهتان را انتخاب کنید و «افزودن» را بزنید.{% endif %}</div>
       </div>
     </div>
     <div class="card-body">
@@ -147,7 +149,7 @@
           {% for l in xray_links %}
           <div class="xlink">
             <span class="xproto sm p-{{ l.protocol }}">{{ {"vless": "VL", "vmess": "VM", "trojan": "TR", "shadowsocks": "SS"}[l.protocol] }}</span>
-            <div class="grow"><div class="t">{{ l.name }}</div><div class="s ltr">{{ l.label }}</div></div>
+            <div class="grow"><div class="t">{{ l.name }}{% if l.via %} <span class="via">از طریق {{ l.via }}</span>{% endif %}</div><div class="s ltr">{{ l.label }}</div></div>
             <button class="btn icon sm ghost" type="button" data-xqr="{{ l.link }}" title="QR">{{ icon("qr") }}</button>
             <button class="btn icon sm ghost" type="button" data-copy="{{ l.link }}" data-copy-msg="لینک کپی شد" title="کپی">{{ icon("copy") }}</button>
           </div>
@@ -161,6 +163,7 @@
   {% endif %}
 
   <section class="card">
+    {% if openvpn %}
     <div class="card-head">
       <div class="card-title">راهنمای اتصال{% if xray_links %} OpenVPN{% endif %}</div>
     </div>
@@ -209,7 +212,8 @@
         <a class="btn block" style="margin-top:16px" href="https://openvpn.net/client/" target="_blank" rel="noopener">{{ icon("external") }} دانلود OpenVPN Connect</a>
       </div>
     </div>
-    <details class="fold" id="share-box">
+    {% endif %}
+    <details class="fold{% if not openvpn %} solo{% endif %}" id="share-box">
       <summary>باز کردن روی دستگاه دیگر {{ icon("chevron-down") }}</summary>
       <div class="body center">
         <div class="qr-box" id="sub-qr"></div>
@@ -247,11 +251,13 @@
       document.querySelectorAll("#platforms button").forEach(function (b) { b.classList.toggle("active", b.dataset.p === p); });
       document.querySelectorAll("[data-guide]").forEach(function (g) { g.classList.toggle("hide", g.dataset.guide !== p); });
     }
-    document.getElementById("platforms").addEventListener("click", function (ev) {
-      var b = ev.target.closest("button[data-p]");
-      if (b) show(b.dataset.p);
-    });
-    show(platform);
+    if (document.getElementById("platforms")) {
+      document.getElementById("platforms").addEventListener("click", function (ev) {
+        var b = ev.target.closest("button[data-p]");
+        if (b) show(b.dataset.p);
+      });
+      show(platform);
+    }
 
     var qrDone = false;
     document.getElementById("share-box").addEventListener("toggle", function () {

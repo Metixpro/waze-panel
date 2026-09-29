@@ -1,4 +1,5 @@
 import datetime
+import json
 import secrets
 import uuid
 
@@ -63,8 +64,9 @@ class AdminUser(Base):
 
 
 class VpnUser(Base):
-    """A single OpenVPN client identity (one certificate, usable over both
-    the UDP and the TCP instance)."""
+    """One customer: an OpenVPN identity (one certificate, usable over both
+    the UDP and the TCP instance) and/or an Xray one, sharing a single
+    quota, expiry and subscription link."""
 
     __tablename__ = "vpn_users"
 
@@ -116,11 +118,31 @@ class VpnUser(Base):
     tls_key_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
     tls_key_seen_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Which services the user gets. With OpenVPN off the hooks refuse every
+    # login (the certificate is kept, so switching it back on just works).
+    openvpn_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+
     # Xray (app/xray): one UUID for VLESS/VMess/Trojan and a random key for
     # Shadowsocks 2022, made on first use. A new pair retires every old link.
     xray_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     xray_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True)
     xray_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # JSON list of the inbound ids this user may use; NULL = all of them,
+    # including inbounds created later.
+    xray_inbounds: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    def xray_inbound_ids(self) -> set[int] | None:
+        """The inbounds this user is limited to, or None for all."""
+        if self.xray_inbounds is None:
+            return None
+        try:
+            return {int(i) for i in json.loads(self.xray_inbounds)}
+        except (ValueError, TypeError):
+            return None
+
+    def uses_inbound(self, inbound_id: int) -> bool:
+        ids = self.xray_inbound_ids()
+        return ids is None or inbound_id in ids
 
     @property
     def needs_password(self) -> bool:
@@ -242,3 +264,10 @@ class RelayServer(Base):
     # health check (differs from `address` on multi-IP relays); lets the
     # panel say "via <relay>" instead of showing the relay's IP.
     source_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Relays set up with --sync fetch what to forward from the panel every
+    # minute (OpenVPN ports and every Xray inbound), then report back what
+    # they actually forward: JSON {"tcp": [...], "udp": [...], "skipped": [...]}.
+    # Xray links only go through a relay for ports it reported.
+    sync_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    synced_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    forwarded: Mapped[str | None] = mapped_column(Text, nullable=True)

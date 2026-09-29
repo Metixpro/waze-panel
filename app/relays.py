@@ -1,6 +1,13 @@
 """Relay servers: client configs get the relays as extra `remote` lines so
 users connect through a server inside the country (which forwards to this
-one), falling back to the direct address.
+one), falling back to the direct address. Xray users get a link through
+each relay as well.
+
+Relays installed with --sync fetch what to forward from the panel every
+minute (sync_config): the OpenVPN ports and every Xray inbound, so a new
+inbound works through the relays within a minute, no commands to re-run.
+They report back what they really forward (record_report); Xray links only
+go through a relay for the ports it reported.
 
 Options live in the key/value settings table:
   RELAY_FALLBACK_DIRECT  "1": this server's own address is the last remote
@@ -9,7 +16,10 @@ Options live in the key/value settings table:
   RELAY_TIMEOUT          seconds a client waits for one address before
                          trying the next (OpenVPN server-poll-timeout)
 """
+import datetime
 import hashlib
+import json
+import secrets
 import socket
 import threading
 import time
@@ -19,7 +29,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.connection import extra_ports, main_port
 from app.database import SessionLocal
-from app.models import RelayServer, Setting
+from app.models import RelayServer, Setting, XrayInbound
 
 RAW_BASE = "https://raw.githubusercontent.com/Metixpro/waze-panel/main"
 
@@ -86,15 +96,100 @@ def client_remotes(proto: str, key: str = "") -> tuple[list[tuple[str, int]], in
     return hops, opts["timeout"]
 
 
+# ------------------------------------------------------------------ sync
+def ensure_token(relay: RelayServer) -> bool:
+    """Give the relay its sync token (secret: it names the relay). True if made."""
+    if relay.sync_token:
+        return False
+    relay.sync_token = secrets.token_hex(16)
+    return True
+
+
+def sync_url(relay: RelayServer) -> str:
+    return f"{settings.public_base_url}/relay-sync/{relay.sync_token}"
+
+
+def relayed_inbounds(db: Session) -> list[XrayInbound]:
+    """Enabled Xray inbounds that go through relays: all of them, except
+    ones with their own address in the links (a CDN domain, say) or with
+    relays switched off in their options."""
+    out = []
+    for ib in db.query(XrayInbound).filter(XrayInbound.enabled.is_(True)).order_by(XrayInbound.position, XrayInbound.id):
+        try:
+            opts = json.loads(ib.options or "{}")
+        except ValueError:
+            opts = {}
+        if opts.get("link_address") or opts.get("relay") is False:
+            continue
+        out.append(ib)
+    return out
+
+
+def forward_maps(db: Session, relay: RelayServer) -> tuple[list[str], list[str]]:
+    """(udp, tcp) "listen:target" pairs the relay should forward: OpenVPN
+    on the relay's own ports, Xray inbounds on the same port as here."""
+    udp = [f"{relay.udp_port}:{settings.OVPN_UDP_PORT}"]
+    tcp = [f"{relay.tcp_port}:{settings.OVPN_TCP_PORT}"]
+    for ib in relayed_inbounds(db):
+        if ib.port != relay.tcp_port:
+            tcp.append(f"{ib.port}:{ib.port}")
+        if ib.protocol == "shadowsocks" and ib.port != relay.udp_port:
+            udp.append(f"{ib.port}:{ib.port}")
+    return udp, tcp
+
+
+def sync_config(db: Session, relay: RelayServer) -> str:
+    """What `waze-relay sync` reads: plain KEY=value lines."""
+    udp, tcp = forward_maps(db, relay)
+    return f"TO={settings.SERVER_ADDRESS}\nUDP_MAP={' '.join(udp)}\nTCP_MAP={' '.join(tcp)}\n"
+
+
+def _ports(text: str) -> list[int]:
+    return sorted({int(p) for p in text.replace(",", " ").split() if p.isdigit() and 0 < int(p) < 65536})
+
+
+def record_report(db: Session, relay: RelayServer, tcp: str, udp: str, skipped: str) -> None:
+    """The relay's word on what it forwards now (listen ports)."""
+    relay.forwarded = json.dumps({
+        "tcp": _ports(tcp), "udp": _ports(udp),
+        "skipped": [s for s in skipped.split() if len(s) < 16][:64],
+    })
+    relay.synced_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    db.commit()
+
+
+def forwarded(relay: RelayServer) -> dict:
+    try:
+        data = json.loads(relay.forwarded or "{}")
+    except ValueError:
+        data = {}
+    return {"tcp": data.get("tcp", []), "udp": data.get("udp", []), "skipped": data.get("skipped", [])}
+
+
+def xray_relays(db: Session, key: str = "") -> list[tuple[RelayServer, set[int]]]:
+    """Enabled relays that sync, with the TCP ports they forward, in the
+    order users should try them (rotated per user when balancing)."""
+    opts = get_options(db)
+    hops = [(r, set(forwarded(r)["tcp"])) for r in ordered_relays(db, enabled_only=True) if r.synced_at]
+    if opts["balance"] and key and len(hops) > 1:
+        k = int(hashlib.sha256(key.encode()).hexdigest(), 16) % len(hops)
+        hops = hops[k:] + hops[:k]
+    return hops
+
+
 def install_commands(relay: RelayServer) -> tuple[str, str]:
     """(main, alternative) command to paste on the relay server: from
     GitHub over HTTPS, or straight from this panel (the relay has to reach
     this server anyway). The panel copy comes first only over HTTPS, since
-    the script runs as root."""
+    the script runs as root. The ports are given too, so the relay forwards
+    OpenVPN even while it can't reach the panel; --sync then keeps it
+    current."""
     args = (
         f"--to {settings.SERVER_ADDRESS} "
         f"--udp {relay.udp_port}:{settings.OVPN_UDP_PORT} --tcp {relay.tcp_port}:{settings.OVPN_TCP_PORT}"
     )
+    if relay.sync_token:
+        args += f" --sync {sync_url(relay)}"
     github = f"bash <(curl -Ls {RAW_BASE}/relay.sh) {args}"
     base = settings.public_base_url
     panel = f"bash <(curl -Ls {base}/relay.sh) {args}"

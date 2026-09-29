@@ -60,6 +60,7 @@ app.include_router(subscription.router)
 app.include_router(internal.router)
 app.include_router(settings_router.router)
 app.include_router(relays.router)
+app.include_router(relays.sync_router)
 app.include_router(about.router)
 app.include_router(xray.router)
 

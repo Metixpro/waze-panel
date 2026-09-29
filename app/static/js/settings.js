@@ -98,12 +98,31 @@ function relayStat(h) {
   return `<span class="status bad">${esc(RELAY_ERR[h.error] || h.error || "خطا")}</span>`;
 }
 
+// Relays set up with --sync ask the panel every minute what to forward, so
+// Xray inbounds reach them by themselves; older setups need the new command once.
+function relaySync(r) {
+  if (!r.synced_at) {
+    return `<div class="meta sync warn">${ic("alert")}<span>همگام نیست؛ برای Xray و به‌روز شدن خودکار پورت‌ها، <button class="linkish" type="button" data-r="setup">دستور نصب جدید</button> را یک بار روی سرور ایران اجرا کنید.</span></div>`;
+  }
+  const age = (Date.now() - new Date(r.synced_at).getTime()) / 1000;
+  const xr = relayData.xray_ports.length
+    ? ` · Xray: ${relayData.xray_ports.filter((p) => !r.xray_missing.includes(p)).map(faPort).join("، ") || "—"}`
+    : "";
+  const bits = [`<div class="meta sync ${age > 300 ? "warn" : ""}">${ic("refresh")}<span>${age > 300 ? `آخرین همگام‌سازی ${relTime(r.synced_at)}؛ سرور ایران به پنل نمی‌رسد؟` : "همگام با پنل"}${xr}</span></div>`];
+  const skipped = r.forwarded.skipped || [];
+  if (skipped.length) {
+    bits.push(`<div class="meta sync warn">${ic("alert")}<span>روی سرور ایران برنامه‌ی دیگری از این پورت‌ها استفاده می‌کند و فوروارد نشدند: <bdi class="mono">${skipped.map(esc).join(" ")}</bdi></span></div>`);
+  }
+  return bits.join("");
+}
+
 function relayRow(r, i, n) {
   return `<div class="list-row relay-row ${r.enabled ? "" : "off"}" data-id="${r.id}">
     <span class="relay-num">${fa(i + 1)}</span>
     <div class="grow info">
       <div class="row" style="gap:8px;flex-wrap:wrap"><span class="name">${esc(r.name)}</span>${r.enabled ? relayStat(relayData.health[r.id]) : `<span class="status">غیرفعال</span>`}</div>
       <div class="meta"><span class="mono ltr">${esc(r.address)}</span><span>· UDP ${faPort(r.udp_port)} · TCP ${faPort(r.tcp_port)}</span></div>
+      ${relaySync(r)}
     </div>
     <div class="relay-ops">
       <button class="btn icon sm ghost" type="button" data-r="up" title="اولویت بالاتر" ${i === 0 ? "disabled" : ""}>${ic("arrow-up")}</button>

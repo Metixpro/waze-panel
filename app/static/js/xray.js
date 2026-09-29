@@ -50,6 +50,7 @@ function detail(ib) {
   if (o.service_name) bits.push(`<span class="mono ltr">${esc(o.service_name)}</span>`);
   if (o.method) bits.push(`<span class="mono ltr">${esc(o.method.replace("2022-blake3-", ""))}</span>`);
   if (o.link_address) bits.push(`${ic("link")}<span class="mono ltr">${esc(o.link_address)}</span>`);
+  else if (o.relay !== false && xd.relays) bits.push(`${ic("route")}${fa(xd.relays)} سرور واسط`);
   return bits.join("<span>·</span>");
 }
 
@@ -67,6 +68,7 @@ function rowHtml(ib, i, n) {
       <div class="row" style="gap:8px;flex-wrap:wrap"><span class="name">${esc(ib.name)}</span>${inboundState(ib)}</div>
       <div class="meta"><span class="ltr">${esc(ib.label)}</span><span>·</span><span>پورت <bdi class="num">${faPort(ib.port)}</bdi></span>${detail(ib) ? `<span>·</span>${detail(ib)}` : ""}</div>
     </div>
+    <div class="end hide-mobile" title="کاربرانی که این ورودی را دارند">${fa(ib.users || 0)}<small>کاربر</small></div>
     <div class="end hide-mobile" title="ترافیک این ورودی">${bytesHtml(ib.traffic)}<small>ترافیک</small></div>
     <div class="relay-ops">
       <button class="btn icon sm ghost" type="button" data-x="up" title="بالاتر در لیست" ${i === 0 ? "disabled" : ""}>${ic("arrow-up")}</button>
@@ -262,6 +264,7 @@ function openForm(ib) {
   F("host").value = o.host || "";
   F("service_name").value = o.service_name || randomPath().slice(1);
   F("link_address").value = o.link_address || "";
+  F("relay").checked = o.relay !== false;
   F("fingerprint").value = o.fingerprint || "chrome";
   F("short_id").value = o.short_id || "";
   $("#xf-pbk").value = o.public_key || "";
@@ -329,7 +332,7 @@ $("#xf-check").addEventListener("click", async (ev) => {
 
 function collectOptions() {
   const { transport, security, protocol } = draft;
-  const o = { link_address: F("link_address").value.trim() };
+  const o = { link_address: F("link_address").value.trim(), relay: F("relay").checked };
   if (["ws", "xhttp", "httpupgrade"].includes(transport)) {
     o.path = F("path").value.trim() || "/";
     o.host = F("host").value.trim();

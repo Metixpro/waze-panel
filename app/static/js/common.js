@@ -283,8 +283,8 @@ function credRow(label, value, { secret = false } = {}) {
   </div>`;
 }
 // Ready-to-send text for the customer: the login only for password modes.
-function shareText({ username, password, sub_link, auth_mode }) {
-  const withLogin = auth_mode && auth_mode !== "cert" && password;
+function shareText({ username, password, sub_link, auth_mode, openvpn_enabled }) {
+  const withLogin = openvpn_enabled !== false && auth_mode && auth_mode !== "cert" && password;
   return [`نام کاربری: ${username}`, withLogin ? `رمز: ${password}` : null, `لینک اشتراک: ${sub_link}`]
     .filter(Boolean).join("\n");
 }

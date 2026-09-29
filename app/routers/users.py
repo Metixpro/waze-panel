@@ -1,4 +1,5 @@
 import datetime
+import json
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -49,6 +50,10 @@ class CreateUserRequest(BaseModel):
     # empty -> generated when the mode needs one
     password: str | None = None
     max_devices: int = Field(default=0, ge=0, le=100)
+    openvpn_enabled: bool = True
+    xray_enabled: bool = True
+    # None = every inbound, including ones created later
+    xray_inbounds: list[int] | None = None
 
 
 class UpdateUserRequest(BaseModel):
@@ -65,7 +70,27 @@ class UpdateUserRequest(BaseModel):
     password: str | None = None
     regenerate_password: bool = False
     max_devices: int | None = Field(default=None, ge=0, le=100)
+    openvpn_enabled: bool | None = None
     xray_enabled: bool | None = None
+    # sent as null = every inbound (also future ones); left out = unchanged
+    xray_inbounds: list[int] | None = None
+
+
+def _clean_inbounds(db: Session, ids: list[int] | None) -> str | None:
+    """Stored form of an inbound selection: None for "all", else the ids of
+    inbounds that exist, as JSON."""
+    if ids is None:
+        return None
+    known = {i for (i,) in db.query(XrayInbound.id).all()}
+    picked = sorted({i for i in ids if i in known})
+    if not picked:
+        raise HTTPException(status_code=400, detail="دست‌کم یک ورودی Xray انتخاب کنید، یا «همه‌ی ورودی‌ها».")
+    return json.dumps(picked)
+
+
+def _check_services(openvpn: bool, xray: bool) -> None:
+    if not openvpn and not xray:
+        raise HTTPException(status_code=400, detail="دست‌کم یکی از OpenVPN یا Xray باید روشن باشد.")
 
 
 def _require_admin(admin: AdminUser | None):
@@ -120,7 +145,9 @@ def _serialize(
         "last_via": relay_names_by_ip().get(user.last_ip or ""),
         "token": user.token,
         "sub_link": f"{settings.public_base_url}/sub/{user.token}",
+        "openvpn_enabled": bool(user.openvpn_enabled),
         "xray_enabled": bool(user.xray_enabled),
+        "xray_inbounds": sorted(ids) if (ids := user.xray_inbound_ids()) is not None else None,
         "tls_key": bool(user.tls_key),
         "tls_key_seen_at": _iso(user.tls_key_seen_at),
     }
@@ -173,6 +200,8 @@ def create_user(
 
     password = (payload.password or "").strip() or None
     _check_auth(payload.auth_mode, password)
+    _check_services(payload.openvpn_enabled, payload.xray_enabled)
+    xray_inbounds = _clean_inbounds(db, payload.xray_inbounds)
 
     try:
         certs.build_client_cert(username)
@@ -184,6 +213,9 @@ def create_user(
         note=payload.note,
         auth_mode=payload.auth_mode,
         max_devices=payload.max_devices,
+        openvpn_enabled=payload.openvpn_enabled,
+        xray_enabled=payload.xray_enabled,
+        xray_inbounds=xray_inbounds,
         # generated up front even in certificate mode, so switching to a
         # password mode later just works
         auth_password=password or generate_vpn_password(),
@@ -225,7 +257,9 @@ def get_user(
     data["tls_mode"] = tlscrypt.get_mode(db)
     data["xray_links"] = xray_links.user_links(db, user) if user.xray_enabled else []
     data["xray_sub"] = f"{settings.public_base_url}/sub/{user.token}/xray"
-    data["xray_inbounds"] = db.query(XrayInbound).filter(XrayInbound.enabled.is_(True)).count()
+    from app.routers.xray import inbound_choices
+
+    data["xray_inbound_list"] = inbound_choices(db)
 
     since = datetime.date.today() - datetime.timedelta(days=13)
     rows = (
@@ -295,13 +329,19 @@ def update_user(
         user.auth_password = generate_vpn_password()
     if payload.max_devices is not None:
         user.max_devices = payload.max_devices
+    openvpn_off = payload.openvpn_enabled is False and user.openvpn_enabled
+    if payload.openvpn_enabled is not None:
+        user.openvpn_enabled = payload.openvpn_enabled
     if payload.xray_enabled is not None:
         user.xray_enabled = payload.xray_enabled
+    if "xray_inbounds" in payload.model_fields_set:
+        user.xray_inbounds = _clean_inbounds(db, payload.xray_inbounds)
+    _check_services(user.openvpn_enabled, user.xray_enabled)
 
     db.commit()
     db.refresh(user)
     xray_core.sync_soon()
-    if relogin:
+    if relogin or openvpn_off:
         _kill_everywhere(user.username)
     elif payload.max_devices:
         from app.openvpn.scheduler import enforce_device_limit_soon

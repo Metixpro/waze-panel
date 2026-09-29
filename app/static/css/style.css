@@ -1298,3 +1298,38 @@ a.tag:hover { color: var(--text); border-color: var(--text-3); }
 .xapp .dl-ic { width: 34px; height: 34px; }
 .xapp .btn.primary { min-width: 84px; }
 #xray-card .xlink .btn.on { color: var(--accent); background: var(--accent-soft); }
+details.fold.solo { border-top: 0; }
+
+/* services a user gets (create form, drawer) */
+.svcs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.svc {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px;
+  background: var(--surface); color: var(--text); font: inherit; text-align: right; cursor: pointer; transition: border-color 0.12s, box-shadow 0.12s;
+}
+.svc:hover { border-color: var(--text-3); }
+.svc b { display: block; font-size: 13.5px; font-weight: 650; }
+.svc small { display: block; font-size: 12px; color: var(--text-3); }
+.svc-ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; background: var(--surface-3); color: var(--text-3); }
+.svc-ic svg { width: 17px; height: 17px; }
+.svc-check { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); display: grid; place-items: center; flex-shrink: 0; color: transparent; }
+.svc-check svg { width: 12px; height: 12px; stroke-width: 3; }
+.svc[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.svc[aria-pressed="true"] .svc-ic.ov { background: var(--accent-soft); color: var(--accent); }
+.svc[aria-pressed="true"] .svc-ic.xr { background: rgba(165, 139, 255, 0.14); color: var(--violet); }
+.svc[aria-pressed="true"] .svc-check { background: var(--accent-fill); border-color: var(--accent-fill); color: #fff; }
+.ib-pick:not(:empty) { margin-top: 12px; }
+.ib-pick .hint { margin-top: 8px; }
+.ib-chips .chip.all { font-weight: 600; }
+.svc-tag { display: inline-flex; align-items: center; gap: 3px; }
+.svc-tag svg { width: 12px; height: 12px; }
+@media (max-width: 640px) {
+  .svcs { grid-template-columns: 1fr; }
+}
+
+/* relay sync state under each relay */
+.relay-row .meta.sync { align-items: flex-start; flex-wrap: nowrap; margin-top: 3px; line-height: 1.7; }
+.relay-row .meta.sync svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 4px; color: var(--green); }
+.relay-row .meta.sync.warn svg { color: var(--amber); }
+.linkish { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
+.linkish:hover { text-decoration: underline; }
+.xlink .via { color: var(--accent); }

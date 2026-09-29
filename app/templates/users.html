@@ -59,7 +59,7 @@
     <div class="modal-head">
       <div>
         <h3 id="create-title">کاربر جدید</h3>
-        <p>یک کانفیگ که هم با UDP و هم با TCP کار می‌کند.</p>
+        <p>OpenVPN، Xray یا هر دو؛ با یک حجم و یک لینک اشتراک.</p>
       </div>
       <button class="btn icon sm ghost" data-close type="button" title="بستن">{{ icon("x") }}</button>
     </div>
@@ -73,6 +73,22 @@
             <button class="btn" type="button" id="dice" title="یک نام تصادفی">{{ icon("dice") }}</button>
           </div>
           <div class="hint">حروف و عدد انگلیسی، <code>_</code> و <code>-</code>، بین ۳ تا ۳۲ کاراکتر</div>
+        </div>
+        <div class="field">
+          <label>سرویس‌ها</label>
+          <div class="svcs" id="c-svcs">
+            <button type="button" class="svc" data-svc="openvpn" aria-pressed="true">
+              <span class="svc-ic ov">{{ icon("shield") }}</span>
+              <span class="grow"><b>OpenVPN</b><small>فایل کانفیگ UDP و TCP</small></span>
+              <span class="svc-check">{{ icon("check") }}</span>
+            </button>
+            <button type="button" class="svc" data-svc="xray" aria-pressed="true">
+              <span class="svc-ic xr">{{ icon("layers") }}</span>
+              <span class="grow"><b>Xray</b><small>VLESS، VMess، Trojan، SS</small></span>
+              <span class="svc-check">{{ icon("check") }}</span>
+            </button>
+          </div>
+          <div class="ib-pick" id="c-ib"></div>
         </div>
         <div class="field">
           <label for="c-note">یادداشت <span class="muted">(اختیاری)</span></label>
@@ -98,8 +114,9 @@
             <input id="c-days" name="expire_days" type="number" min="1" step="1" placeholder="نامحدود" />
           </div>
         </div>
+        <div id="c-ovpn-fields">
         <div class="field">
-          <label>روش ورود</label>
+          <label>روش ورود OpenVPN</label>
           <div class="modes" id="c-modes" role="radiogroup">
             <button type="button" class="mode active" data-mode="cert" role="radio">گواهی</button>
             <button type="button" class="mode" data-mode="cert_pass" role="radio">گواهی + رمز</button>
@@ -120,6 +137,7 @@
             <label for="c-devices">حداکثر دستگاه همزمان</label>
             <input id="c-devices" name="max_devices" type="number" min="0" max="100" step="1" placeholder="نامحدود" />
           </div>
+        </div>
         </div>
       </div>
       <div class="modal-foot">
@@ -146,6 +164,7 @@
       <div class="row" style="margin-top:10px; gap:8px">
         <a class="btn sm grow" id="done-udp" href="#">{{ icon("download") }} کانفیگ UDP</a>
         <a class="btn sm grow" id="done-tcp" href="#">{{ icon("download") }} کانفیگ TCP</a>
+        <button class="btn sm grow" id="done-xray" type="button">{{ icon("layers") }} اشتراک Xray</button>
       </div>
       <details class="fold bare" style="margin-top:16px">
         <summary>نمایش QR {{ icon("chevron-down") }}</summary>

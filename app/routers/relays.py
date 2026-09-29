@@ -1,7 +1,11 @@
-"""Relay servers (Settings page): CRUD, ordering, options and health checks.
-See app/relays.py for how they end up in client configs."""
+"""Relay servers (Settings page): CRUD, ordering, options and health checks,
+and the endpoints relays sync from. See app/relays.py for how they end up
+in client configs and Xray links."""
+import datetime
 import re
-from fastapi import APIRouter, Depends, HTTPException
+
+from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -13,6 +17,8 @@ from app.models import AdminUser, RelayServer
 from app import relays as relay_lib
 
 router = APIRouter(prefix="/api/relays")
+# no login: a relay proves itself with its token
+sync_router = APIRouter()
 
 _ADDRESS_RE = re.compile(r"^[A-Za-z0-9.\-:\[\]]{1,253}$")
 
@@ -60,8 +66,18 @@ def _clean_address(address: str) -> str:
     return address
 
 
-def _serialize(r: RelayServer) -> dict:
+def _iso(dt: datetime.datetime | None) -> str | None:
+    return dt.replace(tzinfo=datetime.timezone.utc).isoformat() if dt else None
+
+
+def _serialize(r: RelayServer, xray_ports: list[int] | None = None) -> dict:
+    fw = relay_lib.forwarded(r)
     return {
+        "sync_url": relay_lib.sync_url(r) if r.sync_token else "",
+        "synced_at": _iso(r.synced_at),
+        "forwarded": fw,
+        # Xray inbound ports this relay should carry but doesn't (yet)
+        "xray_missing": [p for p in (xray_ports or []) if p not in fw["tcp"]] if r.synced_at else [],
         "id": r.id,
         "name": r.name,
         "address": r.address,
@@ -83,8 +99,13 @@ def _get(db: Session, relay_id: int) -> RelayServer:
 @router.get("")
 def list_relays(admin: AdminUser | None = Depends(get_optional_admin), db: Session = Depends(get_db)):
     _require_admin(admin)
+    relays = relay_lib.ordered_relays(db)
+    if any([relay_lib.ensure_token(r) for r in relays]):
+        db.commit()
+    xray_ports = [ib.port for ib in relay_lib.relayed_inbounds(db)]
     return {
-        "relays": [_serialize(r) for r in relay_lib.ordered_relays(db)],
+        "relays": [_serialize(r, xray_ports) for r in relays],
+        "xray_ports": xray_ports,
         "options": relay_lib.get_options(db),
         "health": {str(k): v for k, v in relay_lib.get_health().items()},
         "direct": {
@@ -108,6 +129,7 @@ def create_relay(payload: RelayIn, admin: AdminUser | None = Depends(get_optiona
         tcp_port=payload.tcp_port or int(settings.OVPN_TCP_PORT),
         position=(last[-1].position + 1) if last else 0,
     )
+    relay_lib.ensure_token(relay)
     db.add(relay)
     db.commit()
     db.refresh(relay)
@@ -174,3 +196,33 @@ def check_relays(admin: AdminUser | None = Depends(get_optional_admin)):
     """Round trip through every relay now (in parallel)."""
     _require_admin(admin)
     return {str(k): v for k, v in relay_lib.run_checks().items()}
+
+
+# ---------------------------------------------------------------- relay sync
+_TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _by_token(db: Session, token: str) -> RelayServer:
+    relay = db.query(RelayServer).filter(RelayServer.sync_token == token).first() if _TOKEN_RE.match(token) else None
+    if relay is None:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return relay
+
+
+@sync_router.get("/relay-sync/{token}", include_in_schema=False)
+def relay_sync(token: str, db: Session = Depends(get_db)):
+    """What this relay should forward (`waze-relay sync`, every minute)."""
+    return PlainTextResponse(relay_lib.sync_config(db, _by_token(db, token)))
+
+
+@sync_router.post("/relay-sync/{token}/report", include_in_schema=False)
+def relay_report(
+    token: str,
+    tcp: str = Form(default="", max_length=4000),
+    udp: str = Form(default="", max_length=4000),
+    skipped: str = Form(default="", max_length=1000),
+    db: Session = Depends(get_db),
+):
+    """What it forwards now, after applying the last sync."""
+    relay_lib.record_report(db, _by_token(db, token), tcp, udp, skipped)
+    return PlainTextResponse("ok\n")

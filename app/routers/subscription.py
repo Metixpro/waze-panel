@@ -41,6 +41,7 @@ def subscription_page(token: str, request: Request, db: Session = Depends(get_db
             "panel_title": settings.PANEL_TITLE,
             "days_left": user.days_left(),
             "auth_mode": user.auth_mode or "cert",
+            "openvpn": bool(user.openvpn_enabled),
             "xray_links": xray_links.user_links(db, user) if user.xray_enabled else [],
             "xray_sub": f"{settings.public_base_url}/sub/{token}/xray",
         },
@@ -69,6 +70,8 @@ def subscription_download(token: str, proto: str, db: Session = Depends(get_db))
     if proto not in ("udp", "tcp"):
         raise HTTPException(status_code=400, detail="invalid proto")
     user = _get_user_or_404(token, db)
+    if not user.openvpn_enabled:
+        raise HTTPException(status_code=404, detail="OpenVPN برای این اشتراک فعال نیست.")
 
     try:
         content = build_ovpn(db, user, proto)

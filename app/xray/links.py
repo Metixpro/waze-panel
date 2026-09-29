@@ -17,8 +17,8 @@ def _address(opts: dict) -> str:
     return opts.get("link_address") or settings.SERVER_ADDRESS
 
 
-def _remark(ib: XrayInbound, user: VpnUser) -> str:
-    return f"{ib.name} | {user.username}"
+def _remark(ib: XrayInbound, user: VpnUser, via: str = "") -> str:
+    return f"{ib.name} ({via}) | {user.username}" if via else f"{ib.name} | {user.username}"
 
 
 def _transport_params(ib: XrayInbound, opts: dict) -> dict:
@@ -50,9 +50,11 @@ def _security_params(ib: XrayInbound, opts: dict) -> dict:
     return p
 
 
-def link(ib: XrayInbound, user: VpnUser) -> str:
+def link(ib: XrayInbound, user: VpnUser, address: str = "", via: str = "") -> str:
+    """Share link for one inbound; `address`/`via` for the copy that goes
+    through a relay (same port there)."""
     opts = core.options(ib)
-    addr, port, remark = _address(opts), ib.port, quote(_remark(ib, user))
+    addr, port, remark = address or _address(opts), ib.port, quote(_remark(ib, user, via))
     host = f"[{addr}]" if ":" in addr else addr
 
     if ib.protocol == "vless":
@@ -68,7 +70,7 @@ def link(ib: XrayInbound, user: VpnUser) -> str:
     if ib.protocol == "vmess":
         t = _transport_params(ib, opts)
         doc = {
-            "v": "2", "ps": _remark(ib, user), "add": addr, "port": str(port), "id": user.xray_uuid, "aid": "0",
+            "v": "2", "ps": _remark(ib, user, via), "add": addr, "port": str(port), "id": user.xray_uuid, "aid": "0",
             "scy": "auto", "net": t["type"], "type": "gun" if ib.transport == "grpc" else "none",
             "host": t.get("host", ""), "path": t.get("path", t.get("serviceName", "")),
             "tls": "tls" if ib.security == "tls" else "",
@@ -100,19 +102,28 @@ def label(ib: XrayInbound) -> str:
 
 
 def user_links(db: Session, user: VpnUser) -> list[dict]:
-    """[{id, name, protocol, label, link}] for every enabled inbound."""
+    """[{id, name, protocol, label, via, link}] for every inbound the user
+    has: through each relay that forwards its port first (the relays'
+    order, rotated per user when balancing), then direct -- unless the
+    relay options say relays only."""
+    from app import relays as relay_lib
+
     if core.ensure_credentials(user):
         db.commit()
     inbounds = db.query(XrayInbound).filter(XrayInbound.enabled.is_(True)).order_by(XrayInbound.position, XrayInbound.id).all()
+    relayed = {ib.id for ib in relay_lib.relayed_inbounds(db)}
+    hops = relay_lib.xray_relays(db, user.username)
+    direct_too = relay_lib.get_options(db)["fallback_direct"]
     out = []
     for ib in inbounds:
-        out.append({
-            "id": ib.id,
-            "name": ib.name,
-            "protocol": ib.protocol,
-            "label": label(ib),
-            "link": link(ib, user),
-        })
+        if not user.uses_inbound(ib.id):
+            continue
+        base = {"id": ib.id, "name": ib.name, "protocol": ib.protocol, "label": label(ib)}
+        via = [(r, ports) for r, ports in hops if ib.id in relayed and ib.port in ports]
+        for relay, _ports in via:
+            out.append({**base, "via": relay.name, "link": link(ib, user, address=relay.address, via=relay.name)})
+        if not via or direct_too:
+            out.append({**base, "via": "", "link": link(ib, user)})
     return out
 
 

@@ -38,6 +38,7 @@ _REASONS = {
     "password_required": "This account now needs a username and password - download the new config from your subscription link",
     "bad_credentials": "Wrong username or password",
     "throttled": "Too many failed attempts - try again in a few minutes",
+    "openvpn_off": "OpenVPN is not enabled for this account - use the V2Ray links on your subscription page",
 }
 
 
@@ -186,6 +187,8 @@ def hook_auth(
         return _deny(reason)
     if not user.is_usable():
         return _deny(user.status_label())
+    if not user.openvpn_enabled:
+        return _deny("openvpn_off")
     return {"allow": True}
 
 
@@ -207,6 +210,8 @@ def hook_connect(
         return _deny("cert_required")
     if not user.is_usable():
         return _deny(user.status_label())
+    if not user.openvpn_enabled:
+        return _deny("openvpn_off")
 
     if user.max_devices:
         enforce_device_limit_soon(user.username, user.max_devices)

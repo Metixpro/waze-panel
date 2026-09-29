@@ -180,6 +180,10 @@
             <input id="xf-address" name="link_address" type="text" dir="ltr" class="mono" spellcheck="false" />
             <div class="hint">خالی یعنی آدرس سرور (<bdi class="mono">{{ cfg.SERVER_ADDRESS }}</bdi>). برای CDN دامنه، و برای سرور واسط، IP آن سرور را بنویسید.</div>
           </div>
+          <div class="setting-row" style="margin-bottom:16px">
+            <div><div class="t">لینک از طریق سرورهای واسط</div><div class="s">برای هر سرور واسط ایران یک لینک هم ساخته می‌شود و سرور واسط این پورت را خودش باز می‌کند. با «آدرس داخل لینک» (مثلا CDN) نادیده گرفته می‌شود.</div></div>
+            <label class="switch"><input type="checkbox" id="xf-relay" name="relay" checked aria-label="لینک از طریق سرورهای واسط" /><span></span></label>
+          </div>
           <div class="field-row" data-show="fp">
             <div class="field">
               <label for="xf-fp">اثرانگشت مرورگر</label>

@@ -271,7 +271,7 @@ def _stream(ib: XrayInbound, opts: dict) -> dict:
 
 def inbound_config(ib: XrayInbound, users: list[VpnUser]) -> dict:
     opts = options(ib)
-    clients = [_client(ib, opts, u) for u in users]
+    clients = [_client(ib, opts, u) for u in users if u.uses_inbound(ib.id)]
     if ib.protocol == "vless":
         st = {"clients": clients, "decryption": "none"}
     elif ib.protocol == "shadowsocks":

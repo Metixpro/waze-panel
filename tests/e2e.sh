@@ -456,21 +456,24 @@ check "...which removes the firewall chain" bash -c "! iptables -t nat -S WAZE_P
 # --- Xray ----------------------------------------------------------------------
 not() { ! "$@"; }
 eventually() { for _ in $(seq 1 12); do "$@" && return 0; sleep 1; done; return 1; }
-noproxy() { env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY -u no_proxy -u NO_PROXY "$@"; }
-# "<inbound id> <link>" for each of the user's Xray links
-xlinks_of() { api "$PANEL/api/users/$1" | python3 -c 'import sys, json; [print(l["id"], l["link"]) for l in json.load(sys.stdin)["xray_links"]]'; }
-xlink() { xlinks_of "$USER_ID" | awk -v id="$1" '$1 == id {print $2}'; }   # xlink <inbound id>
-xclient() {  # xclient <link> <socks port>: an Xray client in the namespace
-  python3 "$TESTS_DIR/xray_link2json.py" "$1" "$2" --address "$HOST_IP" > "$WORK/xc-$2.json" || return 1
+# "<inbound id> <relay name or -> <link>" for each of a user's Xray links
+xlinks_of() { api "$PANEL/api/users/$1" | python3 -c 'import sys, json; [print(l["id"], l["via"] or "-", l["link"]) for l in json.load(sys.stdin)["xray_links"]]'; }
+xlink() { xlinks_of "${2:-$USER_ID}" | awk -v id="$1" '$1 == id && $2 == "-" {print $3}'; }   # xlink <inbound id> [user id]: the direct one
+xclient() {  # xclient <link> <socks port> [address]: an Xray client in the namespace
+  # direct links point at this server's public address; the client reaches it
+  # as HOST_IP. "-" keeps the link's own address (a relay's).
+  local addr=(--address "${3:-$HOST_IP}")
+  [ "${3:-}" = "-" ] && addr=()
+  python3 "$TESTS_DIR/xray_link2json.py" "$1" "$2" "${addr[@]}" > "$WORK/xc-$2.json" || return 1
   ip netns exec "$NS" env XRAY_LOCATION_ASSET="${XRAY_BIN%/*}" "$XRAY_BIN" run -c "$WORK/xc-$2.json" > "$WORK/xc-$2.log" 2>&1 &
   echo $! > "$WORK/xc-$2.pid"
   for _ in $(seq 1 25); do ip netns exec "$NS" ss -Hltn "sport = :$2" | grep -q . && return 0; sleep 0.2; done
   return 1
 }
 xclient_stop() { [ -f "$WORK/xc-$1.pid" ] && { kill "$(cat "$WORK/xc-$1.pid")" 2>/dev/null; rm -f "$WORK/xc-$1.pid"; }; }
-xfetch() {  # xfetch <link>: 0 if the whole test file comes through it
+xfetch() {  # xfetch <link> [address|-]: 0 if the whole test file comes through it
   local port=$((31000 + RANDOM % 3000)) size
-  xclient "$1" "$port" || { xclient_stop "$port"; return 1; }
+  xclient "$1" "$port" "${2:-}" || { xclient_stop "$port"; return 1; }
   size="$(ip netns exec "$NS" env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY \
     curl -s -o /dev/null -w '%{size_download}' --max-time 15 --socks5-hostname "127.0.0.1:$port" "http://$XDEST:$TPORT/blob" || true)"
   xclient_stop "$port"
@@ -481,6 +484,7 @@ xadd() {  # xadd <json> -> the new inbound's id (empty if refused)
 }
 xadd_code() { api -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "$1" "$PANEL/api/xray/inbounds"; }
 has_xray_online() { api "$PANEL/api/users/$USER_ID" | python3 -c 'import sys, json; sys.exit("xray" not in json.load(sys.stdin)["online_protos"])'; }
+xport_of() { api "$PANEL/api/xray" | python3 -c "import sys, json; print(next(i['port'] for i in json.load(sys.stdin)['inbounds'] if i['id'] == $1))"; }
 tunnel_open() { ss -Htn state established "( sport = :$1 )" | grep -q "$NS_IP"; }   # tunnel_open <port>
 
 xray_tests() {
@@ -570,6 +574,54 @@ PY
   api -X POST "$PANEL/api/users/$USER_ID/regenerate_xray" >/dev/null
   check "'new links' retires the old link" eventually not xfetch "$link"
   check "...and the new one works" eventually xfetch "$(xlink "$XID_Reality")"
+
+  # --- which services and which inbounds a user gets -----------------------
+  local xo oo xo_uuid
+  new_user "{\"username\":\"${VUSER}x\",\"openvpn_enabled\":false,\"xray_inbounds\":[$XID_Reality]}"; xo="$NEW_ID"
+  check "an Xray-only user limited to one inbound gets just that link" \
+    [ "$(xlinks_of "$xo" | awk '{print $1}' | sort -u | tr -d '\n')" = "$XID_Reality" ]
+  check "...which works" eventually xfetch "$(xlink "$XID_Reality" "$xo")"
+  xo_uuid="$(xlink "$XID_Reality" "$xo" | sed -E 's#^vless://([^@]+)@.*#\1#')"
+  check "...while another inbound doesn't know it" not xfetch "$(xlink "$XID_WS" | sed -E "s#^vless://[^@]+@#vless://$xo_uuid@#")"
+  api -X PATCH -H 'Content-Type: application/json' -d '{"xray_inbounds":null}' "$PANEL/api/users/$xo" >/dev/null
+  check "switched to 'all inbounds', it has every one" eventually xfetch "$(xlink "$XID_WS" "$xo")"
+  check "its OpenVPN download is refused" [ "$(code_of "$PANEL/sub/$(field_of "$xo" token)/udp")" = 404 ]
+  api "$PANEL/api/users/$xo/config/udp" | local_cfg > "$WORK/xo.ovpn"
+  check "...and so is an OpenVPN login with its certificate" refused xo "$WORK/xo.ovpn"
+  check "...with the reason" said xo "OpenVPN is not enabled"
+  new_user "{\"username\":\"${VUSER}o\",\"xray_enabled\":false}"; oo="$NEW_ID"
+  check "an OpenVPN-only user has no Xray links" [ -z "$(xlinks_of "$oo")" ]
+  check "a user needs at least one of the two" \
+    [ "$(api -o /dev/null -w '%{http_code}' -X PATCH -H 'Content-Type: application/json' -d '{"openvpn_enabled":false}' "$PANEL/api/users/$oo")" = 400 ]
+
+  # --- relays carry Xray by themselves -------------------------------------
+  # The relay namespace from the relay tests syncs from the panel like a real
+  # relay does every minute (panel reached as RELAY_HOST_IP, so it needs the
+  # panel listening beyond loopback).
+  if ip netns list | grep -qw "$RNS" && ss -Hltn "sport = :$(env_get PANEL_PORT)" | awk '{print $4}' | grep -qv '^127\.'; then
+    local rid url rlink
+    rid="$(api -H 'Content-Type: application/json' -d "{\"name\":\"e2e-xrelay\",\"address\":\"$RELAY_IP\"}" "$PANEL/api/relays" | jget "['id']")"
+    RELAY_ID="$rid"
+    url="$(api "$PANEL/api/relays" | python3 -c "import sys, json; print(next(r['sync_url'] for r in json.load(sys.stdin)['relays'] if r['id'] == $rid))")"
+    mkdir -p "$WORK/relay-conf"
+    printf 'TO="%s"\nUDP_MAP=""\nTCP_MAP=""\nSYNC_URL="%s"\nPIN_TO="1"\n' "$RELAY_HOST_IP" \
+      "http://$RELAY_HOST_IP:$(env_get PANEL_PORT)/relay-sync/${url##*/}" > "$WORK/relay-conf/relay.conf"
+    relay_sync() { ip netns exec "$RNS" env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY WAZE_RELAY_DIR="$WORK/relay-conf" "$WORK/waze-relay" sync >/dev/null 2>&1; }
+    relay_link() { xlinks_of "$USER_ID" | awk -v id="$1" '$1 == id && $2 == "e2e-xrelay" {print $3}'; }
+    check "no Xray link through a relay that hasn't synced yet" [ -z "$(relay_link "$XID_Reality")" ]
+    check "relay fetches its ports from the panel (waze-relay sync)" relay_sync
+    check "...forwards the Xray inbounds" bash -c "ip netns exec '$RNS' iptables -t nat -S WZR_PRE | grep -q -- '--dport $(xport_of "$XID_Reality") '"
+    rlink="$(relay_link "$XID_Reality")"
+    check "...and the user gets a link through it" [ -n "$rlink" ]
+    check "...that carries traffic through the relay" eventually xfetch "$rlink" -
+    id="$(xadd "{\"name\":\"e2e-Late\",\"protocol\":\"vless\",\"transport\":\"raw\",\"security\":\"reality\",\"port\":$xp,\"options\":{$real}}")"
+    [ -n "$id" ] && XIDS+=("$id")
+    check "a new inbound: no relay link until the relay has it" [ -z "$(relay_link "$id")" ]
+    relay_sync
+    check "...and after the next sync, a working one (nothing run on the relay)" eventually xfetch "$(relay_link "$id")" -
+    api -X DELETE "$PANEL/api/relays/$rid" >/dev/null; RELAY_ID=""
+    check "without the relay, links are direct again" [ -z "$(relay_link "$XID_Reality")" ]
+  fi
 
   api -X PATCH -H 'Content-Type: application/json' -d '{"enabled":false}' "$PANEL/api/xray/inbounds/$XID_WS" >/dev/null
   check "a switched-off inbound leaves the user's links" [ -z "$(xlink "$XID_WS")" ]
