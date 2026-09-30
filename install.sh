@@ -405,14 +405,31 @@ else
 fi
 
 # ============================================================
-# Enable IP forwarding
+# Kernel network tuning & BBR congestion control
 # ============================================================
-log_step "Enabling IP forwarding"
-if ! grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf 2>/dev/null; then
-  echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
-fi
-sysctl -w net.ipv4.ip_forward=1 >/dev/null
-log_ok "ip_forward enabled."
+log_step "Configuring kernel network tuning & BBR congestion control"
+mkdir -p /etc/sysctl.d
+cat > /etc/sysctl.d/99-waze-panel.conf <<'EOF'
+# Waze Panel network & kernel performance tuning
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.forwarding = 1
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_mtu_probing = 1
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+net.netfilter.nf_conntrack_max = 1048576
+net.netfilter.nf_conntrack_tcp_timeout_established = 600
+fs.file-max = 1000000
+EOF
+modprobe tcp_bbr 2>/dev/null || true
+modprobe nf_conntrack 2>/dev/null || true
+sysctl -q -p /etc/sysctl.d/99-waze-panel.conf 2>/dev/null || sysctl -w net.ipv4.ip_forward=1 >/dev/null
+log_ok "Kernel tuning and BBR enabled."
 
 # ============================================================
 # PKI setup (easy-rsa)
@@ -725,6 +742,9 @@ for SUBNET in 10.8.0.0/24 10.9.0.0/24; do
     iptables -I FORWARD -s "\$SUBNET" -j ACCEPT
   fi
 done
+if ! iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; then
+  iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+fi
 EOF
 mv "$NAT_TMP" "${DATA_DIR}/setup-nat.sh"
 chmod 700 "${DATA_DIR}/setup-nat.sh"

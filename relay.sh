@@ -97,7 +97,7 @@ ipt() { iptables -w "$@"; }
 # Remove our chains (and the jumps into them) from every table.
 flush_rules() {
   local t chain parent
-  for spec in "nat:WZR_PRE:PREROUTING" "nat:WZR_POST:POSTROUTING" "filter:WZR_FWD:FORWARD"; do
+  for spec in "nat:WZR_PRE:PREROUTING" "nat:WZR_POST:POSTROUTING" "filter:WZR_FWD:FORWARD" "mangle:WZR_MSS:FORWARD"; do
     IFS=: read -r t chain parent <<<"$spec"
     while ipt -t "$t" -D "$parent" -j "$chain" 2>/dev/null; do :; done
     ipt -t "$t" -F "$chain" 2>/dev/null || true
@@ -111,9 +111,13 @@ rules() {
   sysctl -qw net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
   flush_rules
   ipt -t nat -N WZR_PRE; ipt -t nat -N WZR_POST; ipt -N WZR_FWD
+  ipt -t mangle -N WZR_MSS 2>/dev/null || true
   ipt -t nat -I PREROUTING 1 -j WZR_PRE
   ipt -t nat -I POSTROUTING 1 -j WZR_POST
   ipt -I FORWARD 1 -j WZR_FWD
+  ipt -t mangle -I FORWARD 1 -j WZR_MSS
+  # Clamp TCP MSS to Path MTU to prevent packet loss over tunnels
+  ipt -t mangle -A WZR_MSS -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
   for proto in udp tcp; do
     [ "$proto" = udp ] && maps="$UDP_MAP" || maps="$TCP_MAP"
     for m in $maps; do
@@ -350,12 +354,24 @@ cmd_setup() {
   step "Saving the configuration"
   write_conf "$to" "$udp" "$tcp" "$sync" "$pin"
   cat > "$SYSCTL" <<'EOF'
-# Waze Panel relay: forward packets, and keep enough connection-tracking
-# room for many users on a busy relay.
+# Waze Panel relay: high-performance kernel network tuning & BBR congestion control
 net.ipv4.ip_forward = 1
-net.netfilter.nf_conntrack_max = 262144
+net.ipv6.conf.all.forwarding = 1
+net.netfilter.nf_conntrack_max = 1048576
+net.netfilter.nf_conntrack_tcp_timeout_established = 600
+net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
+net.netfilter.nf_conntrack_tcp_timeout_close_wait = 30
+net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 30
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_mtu_probing = 1
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+fs.file-max = 1000000
 EOF
   modprobe nf_conntrack 2>/dev/null || true
   modprobe tcp_bbr 2>/dev/null || true

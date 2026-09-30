@@ -22,7 +22,7 @@ from app.main import app
 
 
 def test_version_bump():
-    assert __version__ == "2.1.0"
+    assert __version__ == "2.2.0"
 
 
 def test_password_hashing():
@@ -199,3 +199,43 @@ def test_tarslip_validation_logic():
     for p in unsafe_paths:
         is_bad = (prefix_pattern.match(p) is None) or (traversal_pattern.search(p) is not None)
         assert is_bad is True
+
+
+def test_openvpn_client_tuning_render(monkeypatch):
+    from app.openvpn import templates as ovpn_tmpls
+    from app.openvpn import certs, tlscrypt
+
+    monkeypatch.setattr(certs, "read_ca_cert", lambda: "FAKE-CA-CERT")
+    monkeypatch.setattr(certs, "read_ta_key", lambda: "FAKE-TA-KEY")
+
+    db = SessionLocal()
+    try:
+        udp_out = ovpn_tmpls._render("udp", "", "", "<tls-crypt>KEY</tls-crypt>")
+        assert "fast-io" in udp_out
+        assert "sndbuf 524288" in udp_out
+        assert "rcvbuf 524288" in udp_out
+        assert "data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305" in udp_out
+
+        tcp_out = ovpn_tmpls._render("tcp", "", "", "<tls-crypt>KEY</tls-crypt>")
+        assert "tcp-nodelay" in tcp_out
+        assert "sndbuf 524288" in tcp_out
+        assert "rcvbuf 524288" in tcp_out
+    finally:
+        db.close()
+
+
+def test_xray_policy_tuning():
+    from app.xray import core as xray_core
+
+    init_db()
+    db = SessionLocal()
+    try:
+        cfg = xray_core.build_config(db)
+        level0 = cfg["policy"]["levels"]["0"]
+        assert level0["handshake"] == 4
+        assert level0["connIdle"] == 300
+        assert level0["bufferSize"] == 512
+        freedom_out = next(o for o in cfg["outbounds"] if o["protocol"] == "freedom")
+        assert freedom_out["settings"]["domainStrategy"] == "UseIP"
+    finally:
+        db.close()

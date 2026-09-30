@@ -18,8 +18,12 @@ persist-key
 persist-tun
 remote-cert-tls server
 cipher AES-256-GCM
+data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305
 auth SHA256
 verb 3
+sndbuf 524288
+rcvbuf 524288
+comp-lzo no
 {extra}<ca>
 {ca}
 </ca>
@@ -54,7 +58,9 @@ def _render(proto: str, identity: str, extra: str, tls: str, key: str = "") -> s
     # client left after the keepalive timeout (minutes), so it would keep
     # showing as online and its final traffic would be accounted late.
     if proto == "udp":
-        extra += "explicit-exit-notify 2\n"
+        extra += "explicit-exit-notify 2\nfast-io\n"
+    elif proto == "tcp":
+        extra += "tcp-nodelay\n"
 
     return _CLIENT_TEMPLATE.format(
         proto=proto,

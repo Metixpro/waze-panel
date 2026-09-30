@@ -8,12 +8,25 @@
 <div class="page-head">
   <div>
     <h1 class="page-title">سلام، {{ admin.username }}</h1>
-    <div class="page-sub"><span id="today-date"></span><span class="sep"></span><span id="updated-at">در حال بارگذاری…</span></div>
+    <div class="page-sub">
+      <span id="today-date"></span>
+      <span class="sep"></span>
+      <span id="updated-at">در حال بارگذاری…</span>
+      <span class="sep"></span>
+      <span class="latency-badge" id="panel-latency" title="تاخیر ارتباط با پنل">{{ icon("wifi") }} <span id="latency-val">-- ms</span></span>
+    </div>
   </div>
   <div class="head-actions">
     <button class="btn icon" id="refresh-btn" data-spin type="button" title="به‌روزرسانی" aria-label="به‌روزرسانی">{{ icon("refresh") }}</button>
     <a class="btn primary hide-mobile" href="/users?new=1">{{ icon("plus") }} کاربر جدید</a>
   </div>
+</div>
+
+<div class="quick-toolbar">
+  <a class="quick-btn" href="/users?new=1">{{ icon("plus") }}<span>کاربر جدید</span></a>
+  <a class="quick-btn" href="/xray">{{ icon("layers") }}<span>ورودی‌های Xray</span></a>
+  <a class="quick-btn" href="/settings#relays">{{ icon("share") }}<span>سرورهای واسط</span></a>
+  <a class="quick-btn" href="/settings#shared-config">{{ icon("download") }}<span>کانفیگ عمومی</span></a>
 </div>
 
 <section class="kpis" aria-label="خلاصه">

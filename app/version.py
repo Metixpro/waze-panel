@@ -10,7 +10,7 @@ import subprocess
 from functools import lru_cache
 from pathlib import Path
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 REPO = "Metixpro/waze-panel"
 REPO_URL = f"https://github.com/{REPO}"
