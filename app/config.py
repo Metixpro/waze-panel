@@ -36,6 +36,7 @@ class Settings:
     INTERNAL_TOKEN: str = os.getenv("INTERNAL_TOKEN", secrets.token_hex(32))
     ENV: str = os.getenv("ENV", "production")
     DEBUG: bool = _get_bool("DEBUG", False)
+    COOKIE_SECURE: bool = _get_bool("COOKIE_SECURE", False)
 
     # --- Paths ---
     DATA_DIR: Path = Path(os.getenv("DATA_DIR", "/etc/waze-panel"))

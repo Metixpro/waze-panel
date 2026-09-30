@@ -48,6 +48,7 @@ def cmd_reset_password(args) -> None:
             print(f"Admin '{args.username}' not found.", file=sys.stderr)
             sys.exit(1)
         admin.password_hash = hash_password(args.password)
+        admin.session_version = (admin.session_version or 1) + 1
         db.commit()
         print(f"Password updated for '{args.username}'.")
     finally:

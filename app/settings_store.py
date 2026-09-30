@@ -1,6 +1,4 @@
-"""Bridges the DB-backed `settings` table with the in-process Settings
-object, and keeps /etc/waze-panel/panel.env in sync so changes made from
-the panel survive a service restart."""
+import os
 import re
 from pathlib import Path
 
@@ -44,7 +42,7 @@ def _sync_env_file(key: str, value: str) -> None:
     if not _ENV_FILE.exists():
         return  # dev environment, nothing to sync
     try:
-        text = _ENV_FILE.read_text()
+        text = _ENV_FILE.read_text(encoding="utf-8")
     except OSError:
         return
 
@@ -55,7 +53,21 @@ def _sync_env_file(key: str, value: str) -> None:
     else:
         text = text.rstrip("\n") + f"\n{line}\n"
 
+    tmp_file = _ENV_FILE.with_name(f"{_ENV_FILE.name}.tmp.{os.getpid()}")
     try:
-        _ENV_FILE.write_text(text)
+        try:
+            mode = _ENV_FILE.stat().st_mode & 0o777
+        except OSError:
+            mode = 0o600
+        fd = os.open(str(tmp_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_file, _ENV_FILE)
     except OSError:
-        pass
+        if tmp_file.exists():
+            try:
+                tmp_file.unlink()
+            except OSError:
+                pass

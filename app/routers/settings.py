@@ -9,7 +9,7 @@ from app import connection
 from app.backup import create_backup
 from app.config import settings
 from app.database import get_db
-from app.deps import get_optional_admin
+from app.deps import SESSION_VERSION_KEY, get_optional_admin
 from app.models import AdminUser, VpnUser, XrayInbound
 from app.openvpn import certs, tlscrypt
 from app.openvpn.templates import build_shared_ovpn
@@ -100,6 +100,7 @@ def update_settings(
 @router.post("/api/settings/password")
 def change_password(
     payload: ChangePassword,
+    request: Request,
     admin: AdminUser | None = Depends(get_optional_admin),
     db: Session = Depends(get_db),
 ):
@@ -112,7 +113,9 @@ def change_password(
         raise HTTPException(status_code=400, detail="رمز عبور جدید باید حداقل ۶ کاراکتر باشد.")
 
     admin.password_hash = hash_password(payload.new_password)
+    admin.session_version = (admin.session_version or 1) + 1
     db.commit()
+    request.session[SESSION_VERSION_KEY] = admin.session_version
     return {"ok": True}
 
 

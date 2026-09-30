@@ -2,11 +2,23 @@
 only). Used to read live connected-client stats and to force-disconnect a
 client whose quota/expiry ran out while a session is still open."""
 import socket
+import threading
 from dataclasses import dataclass
 
 
 class ManagementError(RuntimeError):
     pass
+
+
+_mgmt_locks: dict[int, threading.Lock] = {}
+_mgmt_locks_guard = threading.Lock()
+
+
+def _get_mgmt_lock(port: int) -> threading.Lock:
+    with _mgmt_locks_guard:
+        if port not in _mgmt_locks:
+            _mgmt_locks[port] = threading.Lock()
+        return _mgmt_locks[port]
 
 
 @dataclass
@@ -33,32 +45,34 @@ class ClientSession:
 
 
 def _talk(port: int, command: str, stop_prefixes=("END", "SUCCESS:", "ERROR:")) -> list[str]:
-    try:
-        with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
-            sock.settimeout(5)
-            f = sock.makefile("r", newline="\n")
-            # Drain the initial ">INFO:..." banner line.
-            f.readline()
+    lock = _get_mgmt_lock(port)
+    with lock:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+                sock.settimeout(5)
+                f = sock.makefile("r", newline="\n")
+                # Drain the initial ">INFO:..." banner line.
+                f.readline()
 
-            sock.sendall((command + "\n").encode())
+                sock.sendall((command + "\n").encode())
 
-            lines: list[str] = []
-            while True:
-                line = f.readline()
-                if line == "":
-                    break
-                line = line.rstrip("\r\n")
-                if line.startswith(">"):
-                    # asynchronous real-time notification, not part of the reply
-                    continue
-                if any(line.startswith(p) for p in stop_prefixes):
-                    if line != "END":
-                        lines.append(line)
-                    break
-                lines.append(line)
-            return lines
-    except (OSError, socket.timeout) as exc:
-        raise ManagementError(str(exc)) from exc
+                lines: list[str] = []
+                while True:
+                    line = f.readline()
+                    if line == "":
+                        break
+                    line = line.rstrip("\r\n")
+                    if line.startswith(">"):
+                        # asynchronous real-time notification, not part of the reply
+                        continue
+                    if any(line.startswith(p) for p in stop_prefixes):
+                        if line != "END":
+                            lines.append(line)
+                        break
+                    lines.append(line)
+                return lines
+        except (OSError, socket.timeout) as exc:
+            raise ManagementError(str(exc)) from exc
 
 
 def _to_int(value: str, default: int = 0) -> int:
