@@ -1333,3 +1333,137 @@ details.fold.solo { border-top: 0; }
 .linkish { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 .linkish:hover { text-decoration: underline; }
 .xlink .via { color: var(--accent); }
+
+/* ================================================================ professional enhancements */
+/* Quick actions toolbar */
+.quick-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.quick-btn svg {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+  transition: transform 0.2s ease;
+}
+.quick-btn:hover {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--line-2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.quick-btn:hover svg {
+  transform: scale(1.1);
+}
+
+/* Latency badge */
+.latency-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-3);
+  direction: ltr;
+  transition: all 0.25s ease;
+}
+.latency-badge svg {
+  width: 12px;
+  height: 12px;
+}
+.latency-badge.fast {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.latency-badge.mid {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+.latency-badge.slow {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+/* Polished Card Hover and Glow */
+.card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card:hover {
+  border-color: var(--line-2);
+}
+.card.kpi {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card.kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(350px circle at 90% 10%, var(--accent-soft), transparent 70%);
+  pointer-events: none;
+  opacity: 0.7;
+}
+.card.kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.22);
+  border-color: rgba(126, 162, 255, 0.3);
+}
+
+/* Glowing dot pulse for online status */
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(76, 195, 138, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(76, 195, 138, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(76, 195, 138, 0); }
+}
+.dot.ok {
+  animation: pulse-ring 2.5s infinite;
+}
+
+/* Modern Glassmorphic Topbar for Mobile / Small Screens */
+.topbar {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(15, 16, 18, 0.82);
+}
+[data-theme="light"] .topbar {
+  background: rgba(255, 255, 255, 0.88);
+}
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+}

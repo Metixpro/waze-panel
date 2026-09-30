@@ -278,9 +278,32 @@ def _check_relays() -> None:
         logger.exception("relay check failed")
 
 
+_xray_down_count = 0
+
+
 def _poll_xray() -> None:
+    global _xray_down_count
     from app.xray import core
 
+    if not core.installed() or not core.config_path().exists():
+        return
+
+    if not core.api_up():
+        _xray_down_count += 1
+        if _xray_down_count >= 2:
+            logger.warning("Xray-core appears down; watchdog resurrecting service...")
+            try:
+                db = SessionLocal()
+                try:
+                    core.apply(db, force=True)
+                finally:
+                    db.close()
+                _xray_down_count = 0
+            except Exception:
+                logger.exception("Xray watchdog failed to restart core")
+        return
+
+    _xray_down_count = 0
     try:
         core.poll()
     except Exception:

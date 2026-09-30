@@ -61,6 +61,7 @@ class AdminUser(Base):
     last_login_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime, nullable=True
     )
+    session_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
 class VpnUser(Base):

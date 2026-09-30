@@ -142,6 +142,17 @@ cmd_restore() {
   local file="${1:-}" answer
   [ -n "$file" ] && [ -f "$file" ] || die "Usage: waze-panel restore <backup.tar.gz>"
   tar -tzf "$file" | grep -q '^etc/waze-panel/panel.env$' || die "That does not look like a Waze Panel backup."
+
+  # Security verification: strictly reject archives with traversal or paths outside allowed prefixes
+  if tar -tzf "$file" | grep -qE '(\.\./|^/)'; then
+    die "Archive contains dangerous path traversal patterns."
+  fi
+  local invalid_paths
+  invalid_paths="$(tar -tzf "$file" | grep -v -E '^(etc/waze-panel/|etc/openvpn/)')"
+  if [ -n "$invalid_paths" ]; then
+    die "Archive contains unauthorized or dangerous paths outside allowed directories."
+  fi
+
   echo -e "${C_YELLOW}This replaces the current database, settings and certificates with the backup.${C_RESET}"
   read -r -p "Continue? [y/N]: " answer </dev/tty || true
   case "$answer" in y|Y|yes) ;; *) die "Cancelled." ;; esac

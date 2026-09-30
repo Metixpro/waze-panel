@@ -298,11 +298,25 @@ def build_config(db: Session) -> dict:
         "api": {"tag": "api", "listen": f"127.0.0.1:{settings.XRAY_API_PORT}", "services": ["HandlerService", "StatsService"]},
         "stats": {},
         "policy": {
-            "levels": {"0": {"statsUserUplink": True, "statsUserDownlink": True, "statsUserOnline": True}},
+            "levels": {
+                "0": {
+                    "statsUserUplink": True,
+                    "statsUserDownlink": True,
+                    "statsUserOnline": True,
+                    "handshake": 4,
+                    "connIdle": 300,
+                    "uplinkOnly": 2,
+                    "downlinkOnly": 5,
+                    "bufferSize": 512,
+                }
+            },
             "system": {"statsInboundUplink": True, "statsInboundDownlink": True},
         },
         "inbounds": [inbound_config(ib, users) for ib in inbounds],
-        "outbounds": [{"protocol": "freedom", "tag": "direct"}, {"protocol": "blackhole", "tag": "block"}],
+        "outbounds": [
+            {"protocol": "freedom", "tag": "direct", "settings": {"domainStrategy": "UseIP"}},
+            {"protocol": "blackhole", "tag": "block"},
+        ],
         # Nothing on this server's loopback or private networks for users
         # (Xray's freedom outbound refuses those by default as well).
         "routing": {"rules": [{"type": "field", "ip": PRIVATE_NETS, "outboundTag": "block"}]},

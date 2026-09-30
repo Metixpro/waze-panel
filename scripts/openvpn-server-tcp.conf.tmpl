@@ -22,10 +22,16 @@ push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS 1.1.1.1"
 push "dhcp-option DNS 8.8.8.8"
 
-keepalive 10 120
+keepalive 10 60
 cipher AES-256-GCM
 auth SHA256
-data-ciphers AES-256-GCM:AES-128-GCM
+data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305
+tcp-nodelay
+push "tcp-nodelay"
+sndbuf 524288
+rcvbuf 524288
+push "sndbuf 524288"
+push "rcvbuf 524288"
 
 user nobody
 group __OVPN_GROUP__

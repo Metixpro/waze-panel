@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -44,6 +44,7 @@ def subscription_page(token: str, request: Request, db: Session = Depends(get_db
             "openvpn": bool(user.openvpn_enabled),
             "xray_links": xray_links.user_links(db, user) if user.xray_enabled else [],
             "xray_sub": f"{settings.public_base_url}/sub/{token}/xray",
+            "clash_sub": f"{settings.public_base_url}/sub/{token}/clash",
         },
     )
 
@@ -57,12 +58,30 @@ def subscription_manifest(token: str, db: Session = Depends(get_db)):
 
 
 @router.get("/sub/{token}/xray")
-def subscription_xray(token: str, db: Session = Depends(get_db)):
+def subscription_xray(token: str, request: Request, db: Session = Depends(get_db)):
     """The Xray subscription apps import and refresh: base64 of the share
-    links, with usage and expiry in the headers they understand."""
+    links (or Clash YAML when requested by Clash/Stash clients), with usage
+    and expiry in the headers they understand."""
     user = _get_user_or_404(token, db)
+    ua = request.headers.get("user-agent", "").lower()
+    is_clash = (
+        any(k in ua for k in ("clash", "stash", "meta", "mihomo", "flclash"))
+        or request.query_params.get("format") == "clash"
+    )
+    if is_clash:
+        body, headers = xray_links.clash_subscription(db, user)
+        return Response(content=body, media_type="text/yaml; charset=utf-8", headers=headers)
+
     body, headers = xray_links.subscription(db, user)
     return PlainTextResponse(body, headers=headers)
+
+
+@router.get("/sub/{token}/clash")
+def subscription_clash(token: str, db: Session = Depends(get_db)):
+    """Direct Clash / Clash Meta (Mihomo) YAML subscription configuration."""
+    user = _get_user_or_404(token, db)
+    body, headers = xray_links.clash_subscription(db, user)
+    return Response(content=body, media_type="text/yaml; charset=utf-8", headers=headers)
 
 
 @router.get("/sub/{token}/{proto}")

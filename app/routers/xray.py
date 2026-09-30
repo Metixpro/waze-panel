@@ -1,5 +1,6 @@
 """Xray page and API: inbounds (create from a preset, edit, order, enable,
 delete), core status, REALITY target check."""
+import ipaddress
 import json
 import secrets
 import socket
@@ -309,12 +310,34 @@ def check_target(payload: Target, admin: AdminUser | None = Depends(get_optional
     sni = payload.sni.strip().lower()
     if not presets._HOST_RE.match(sni):
         raise HTTPException(status_code=400, detail="دامنه نامعتبر است.")
+
+    # Resolve and validate IP to prevent SSRF against loopback/private/internal addresses
+    try:
+        addrinfo = socket.getaddrinfo(sni, 443, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        return {"ok": False, "error": "unreachable", "detail": f"DNS resolution failed: {exc}"}
+
+    target_sockaddr = None
+    for res in addrinfo:
+        ip_str = res[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+                raise HTTPException(status_code=400, detail="اتصال به آدرس‌های خصوصی یا لوکال مجاز نیست.")
+            if target_sockaddr is None:
+                target_sockaddr = res[4]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="آدرس IP نامعتبر است.")
+
+    if not target_sockaddr:
+        raise HTTPException(status_code=400, detail="هیچ آدرس معتبری برای دامنه پیدا نشد.")
+
     ctx = ssl.create_default_context()
     ctx.minimum_version = ssl.TLSVersion.TLSv1_3
     ctx.set_alpn_protocols(["h2", "http/1.1"])
     started = time.monotonic()
     try:
-        with socket.create_connection((sni, 443), timeout=6) as raw, ctx.wrap_socket(raw, server_hostname=sni) as tls:
+        with socket.create_connection(target_sockaddr, timeout=6) as raw, ctx.wrap_socket(raw, server_hostname=sni) as tls:
             return {"ok": True, "ms": round((time.monotonic() - started) * 1000), "tls": tls.version(), "h2": tls.selected_alpn_protocol() == "h2"}
     except ssl.SSLError as exc:
         return {"ok": False, "error": "no_tls13" if "VERSION" in str(exc).upper() else "tls", "detail": str(exc)[:160]}

@@ -10,7 +10,27 @@ from app.config import settings
 from app.version import __version__
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+class CompatibleJinja2Templates(Jinja2Templates):
+    def TemplateResponse(self, *args, **kwargs):
+        # Support both legacy (name, context, status_code=...) and modern (request, name, context=...)
+        if args and isinstance(args[0], str):
+            name = args[0]
+            context = args[1] if len(args) > 1 else kwargs.pop("context", {})
+            request = kwargs.pop("request", None) or (context.get("request") if isinstance(context, dict) else None)
+            status_code = args[2] if len(args) > 2 else kwargs.pop("status_code", 200)
+            return super().TemplateResponse(
+                request=request,
+                name=name,
+                context=context,
+                status_code=status_code,
+                **kwargs,
+            )
+        return super().TemplateResponse(*args, **kwargs)
+
+
+templates = CompatibleJinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 def humanize_bytes(value) -> str:

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.deps import SESSION_KEY, get_optional_admin
+from app.deps import SESSION_KEY, SESSION_VERSION_KEY, get_optional_admin
 from app.models import AdminUser
 from app.security import hash_password, verify_password
 from app.templating import templates
@@ -19,6 +19,7 @@ router = APIRouter()
 # within WINDOW_SECONDS, that IP is refused until the window slides past.
 MAX_FAILURES = 5
 WINDOW_SECONDS = 600
+MAX_FAILURES_ENTRIES = 5000
 
 _failures: dict[str, list[float]] = {}
 _failures_lock = threading.Lock()
@@ -40,6 +41,12 @@ def _client_ip(request: Request) -> str:
 
 
 def _recent_failures(ip: str, now: float) -> list[float]:
+    # Prune expired entries if dictionary grows too large
+    if len(_failures) > MAX_FAILURES_ENTRIES:
+        expired_ips = [k for k, v in _failures.items() if not v or (now - v[-1] >= WINDOW_SECONDS)]
+        for k in expired_ips:
+            _failures.pop(k, None)
+
     attempts = [t for t in _failures.get(ip, []) if now - t < WINDOW_SECONDS]
     if attempts:
         _failures[ip] = attempts
@@ -101,10 +108,18 @@ def login_submit(
 
     request.session.clear()
     request.session[SESSION_KEY] = admin.id
+    request.session[SESSION_VERSION_KEY] = admin.session_version
     return RedirectResponse(url="/dashboard", status_code=302)
 
 
 @router.get("/logout")
-def logout(request: Request):
+def logout(
+    request: Request,
+    admin: AdminUser | None = Depends(get_optional_admin),
+    db: Session = Depends(get_db),
+):
+    if admin:
+        admin.session_version = (admin.session_version or 1) + 1
+        db.commit()
     request.session.clear()
     return RedirectResponse(url="/login", status_code=302)

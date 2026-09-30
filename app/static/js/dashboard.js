@@ -270,8 +270,18 @@ function renderEnding() {
 }
 
 async function load(withUsers = false) {
+  const t0 = performance.now();
   try {
     const [s, u] = await Promise.all([api("/api/dashboard/stats"), withUsers ? api("/api/users") : Promise.resolve(null)]);
+    const rtt = Math.round(performance.now() - t0);
+    const latencyEl = $("#latency-val");
+    if (latencyEl) {
+      latencyEl.textContent = `${fa(rtt)} ms`;
+      const badge = $("#panel-latency");
+      if (badge) {
+        badge.className = `latency-badge ${rtt < 100 ? "fast" : rtt < 300 ? "mid" : "slow"}`;
+      }
+    }
     stats = s;
     if (u) users = u;
     setNavOnline(s.online_count);

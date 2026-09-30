@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
@@ -7,6 +7,15 @@ engine = create_engine(
     f"sqlite:///{settings.DB_PATH}",
     connect_args={"check_same_thread": False},
 )
+
+# Enable WAL mode and busy timeout for high-concurrency reliability
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=10000")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -35,6 +44,9 @@ def init_db():
 # existing table, so an upgraded install gets them here (SQLite can only
 # ADD COLUMN, which is all we need).
 _ADDED_COLUMNS = {
+    "admin_users": {
+        "session_version": "INTEGER NOT NULL DEFAULT 1",
+    },
     "vpn_users": {
         "auth_mode": "VARCHAR(16) NOT NULL DEFAULT 'cert'",
         "auth_password": "VARCHAR(128)",
