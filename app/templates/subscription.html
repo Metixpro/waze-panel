@@ -111,7 +111,7 @@
   {% endif %}
 
   {% if xray_links %}
-  <section class="card" id="xray-card" data-sub="{{ xray_sub }}" data-name="{{ cfg.PANEL_TITLE }} · {{ user.username }}">
+  <section class="card" id="xray-card" data-sub="{{ xray_sub }}" data-clash-sub="{{ clash_sub }}" data-name="{{ cfg.PANEL_TITLE }} · {{ user.username }}">
     <div class="card-head">
       <div>
         <div class="card-title">اتصال با V2Ray <span class="muted" style="font-weight:400">(Xray)</span></div>
@@ -127,13 +127,23 @@
       </div>
       <div class="xapps" id="xapps"></div>
       <div class="field" style="margin:16px 0 0">
-        <label for="xsub">لینک اشتراک</label>
+        <label for="xsub">لینک اشتراک Xray / V2Ray</label>
         <div class="input-group">
           <input id="xsub" type="text" class="mono" dir="ltr" readonly value="{{ xray_sub }}" />
           <button class="btn" type="button" data-copy="{{ xray_sub }}" data-copy-msg="لینک اشتراک کپی شد" title="کپی">{{ icon("copy") }}</button>
         </div>
         <div class="hint">اگر دکمه‌ی «افزودن» کار نکرد: در اپ «افزودن اشتراک» (Subscription) را بزنید و همین لینک را وارد کنید. سرورها و حجم باقیمانده خودکار به‌روز می‌شوند.</div>
       </div>
+      {% if clash_sub %}
+      <div class="field" style="margin:14px 0 0">
+        <label for="csub">لینک اشتراک Clash / Stash / Mihomo</label>
+        <div class="input-group">
+          <input id="csub" type="text" class="mono" dir="ltr" readonly value="{{ clash_sub }}" />
+          <button class="btn" type="button" data-copy="{{ clash_sub }}" data-copy-msg="لینک Clash کپی شد" title="کپی">{{ icon("copy") }}</button>
+        </div>
+        <div class="hint">مخصوص کلاینت‌های Clash Verge، Stash، Mihomo و FlClash با تفکیک هوشمند ترافیک ایران و انتخاب خودکار بهترین سرور بر اساس کمترین پینگ.</div>
+      </div>
+      {% endif %}
     </div>
     <details class="fold" id="xsub-qr-box">
       <summary>QR اشتراک {{ icon("chevron-down") }}</summary>
@@ -268,11 +278,12 @@
     // Xray: one-tap import into the apps people use here
     var xc = document.getElementById("xray-card");
     if (xc) {
-      var sub = xc.dataset.sub, name = xc.dataset.name, enc = encodeURIComponent(sub), frag = "#" + encodeURIComponent(name);
+      var sub = xc.dataset.sub, clashSub = xc.dataset.clashSub || sub, name = xc.dataset.name, enc = encodeURIComponent(sub), cEnc = encodeURIComponent(clashSub), frag = "#" + encodeURIComponent(name);
       var APPS = {
         v2rayng: { name: "v2rayNG", sub: "رایگان و سبک", add: "v2rayng://install-config?url=" + enc + frag, get: "https://github.com/2dust/v2rayNG/releases/latest" },
         hiddify: { name: "Hiddify", sub: "ساده، با انتخاب خودکار بهترین سرور", add: "hiddify://import/" + sub + frag },
-        streisand: { name: "Streisand", sub: "رایگان", add: "streisand://import/" + sub + frag, get: "https://apps.apple.com/app/id6450534064" },
+        flclash: { name: "FlClash / Clash Verge", sub: "پشتیبانی کامل Clash با تفکیک ایران", add: "clash://install-config?url=" + cEnc + frag, get: "https://github.com/chen08209/FlClash/releases/latest" },
+        streisand: { name: "Streisand", sub: "رایگان برای iOS", add: "streisand://import/" + sub + frag, get: "https://apps.apple.com/app/id6450534064" },
         v2box: { name: "V2Box", sub: "رایگان", add: "v2box://install-sub?url=" + enc + "&name=" + encodeURIComponent(name), get: "https://apps.apple.com/app/id6446814690" },
         v2rayn: { name: "v2rayN", sub: "لینک اشتراک را کپی و در اپ وارد کنید", add: null, get: "https://github.com/2dust/v2rayN/releases/latest" },
       };
@@ -282,7 +293,12 @@
         windows: "https://github.com/hiddify/hiddify-app/releases/latest",
         mac: "https://github.com/hiddify/hiddify-app/releases/latest",
       };
-      var BY = { android: ["v2rayng", "hiddify"], ios: ["streisand", "v2box", "hiddify"], windows: ["hiddify", "v2rayn"], mac: ["hiddify", "streisand", "v2box"] };
+      var BY = {
+        android: ["v2rayng", "hiddify", "flclash"],
+        ios: ["streisand", "v2box", "hiddify"],
+        windows: ["flclash", "hiddify", "v2rayn"],
+        mac: ["flclash", "hiddify", "streisand", "v2box"]
+      };
       var showApps = function (p) {
         document.querySelectorAll("#xplatforms button").forEach(function (b) { b.classList.toggle("active", b.dataset.p === p); });
         document.getElementById("xapps").innerHTML = BY[p].map(function (k) {

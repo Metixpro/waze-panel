@@ -239,3 +239,123 @@ def test_xray_policy_tuning():
         assert freedom_out["settings"]["domainStrategy"] == "UseIP"
     finally:
         db.close()
+
+
+def test_clash_subscription_and_endpoints():
+    import json
+    import yaml
+    from app.models import VpnUser, XrayInbound
+    from app.xray import links as xray_links
+
+    init_db()
+    db = SessionLocal()
+    try:
+        # Create test user
+        user = db.query(VpnUser).filter(VpnUser.username == "test_clash_user").first()
+        if not user:
+            user = VpnUser(
+                username="test_clash_user",
+                token="clash-test-token-12345678",
+                xray_enabled=True,
+                xray_uuid="00000000-0000-0000-0000-000000000001",
+                data_limit_bytes=10 * 1024 * 1024 * 1024,
+                data_used_bytes=1024 * 1024,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        # Create or fetch test inbound
+        ib = db.query(XrayInbound).filter(XrayInbound.name == "Test Clash Inbound").first()
+        if not ib:
+            ib = XrayInbound(
+                name="Test Clash Inbound",
+                protocol="vless",
+                transport="ws",
+                security="reality",
+                port=443,
+                options=json.dumps({
+                    "sni": "speedtest.net",
+                    "public_key": "fake-pub-key-123",
+                    "short_id": "0123456789abcdef",
+                    "path": "/clash-ws",
+                }),
+                enabled=True,
+            )
+            db.add(ib)
+            db.commit()
+
+        # Test direct YAML generation
+        yaml_content, headers = xray_links.clash_subscription(db, user)
+        assert "subscription-userinfo" in headers
+        assert "profile-title" in headers
+        assert headers["content-disposition"] == 'attachment; filename="test_clash_user.yaml"'
+
+        parsed = yaml.safe_load(yaml_content)
+        assert parsed["port"] == 7890
+        assert parsed["mode"] == "rule"
+        assert len(parsed["proxies"]) >= 1
+        p = parsed["proxies"][0]
+        assert p["type"] == "vless"
+        assert p["servername"] == "speedtest.net"
+        assert p["reality-opts"]["public-key"] == "fake-pub-key-123"
+        assert p["ws-opts"]["path"] == "/clash-ws"
+
+        # Check proxy groups and rules
+        group_names = [g["name"] for g in parsed["proxy-groups"]]
+        assert any("AUTO" in g for g in group_names)
+        assert any("PROXY" in g for g in group_names)
+        assert any("IRAN" in g for g in group_names)
+        assert any("GEOIP,IR" in r for r in parsed["rules"])
+
+        # Test HTTP endpoints via TestClient
+        client = TestClient(app)
+
+        # 1. /sub/{token}/clash
+        res_clash = client.get(f"/sub/{user.token}/clash")
+        assert res_clash.status_code == 200
+        assert "text/yaml" in res_clash.headers.get("content-type", "")
+        assert "proxies:" in res_clash.text
+
+        # 2. /sub/{token}/xray with Clash User-Agent
+        res_ua = client.get(f"/sub/{user.token}/xray", headers={"user-agent": "ClashforWindows/0.20.39"})
+        assert res_ua.status_code == 200
+        assert "text/yaml" in res_ua.headers.get("content-type", "")
+
+        # 3. /sub/{token}/xray with default User-Agent (base64 links)
+        res_default = client.get(f"/sub/{user.token}/xray")
+        assert res_default.status_code == 200
+        assert "text/plain" in res_default.headers.get("content-type", "")
+
+        # 4. /sub/{token} subscription web page
+        res_page = client.get(f"/sub/{user.token}")
+        assert res_page.status_code == 200
+        assert "لینک اشتراک Clash / Stash / Mihomo" in res_page.text
+        assert "FlClash" in res_page.text
+    finally:
+        db.close()
+
+
+def test_xray_watchdog_resurrection(monkeypatch):
+    from app.openvpn import scheduler
+    from app.xray import core as xray_core
+
+    applied = []
+    monkeypatch.setattr(xray_core, "installed", lambda: True)
+    monkeypatch.setattr(xray_core, "config_path", lambda: Path("/etc/xray/config.json"))
+    monkeypatch.setattr(Path, "exists", lambda self: True)
+    monkeypatch.setattr(xray_core, "api_up", lambda: False)
+    monkeypatch.setattr(xray_core, "apply", lambda db, force=False: applied.append(force))
+
+    scheduler._xray_down_count = 0
+    # First poll: down count becomes 1, no apply yet
+    scheduler._poll_xray()
+    assert scheduler._xray_down_count == 1
+    assert len(applied) == 0
+
+    # Second poll: down count reaches 2, triggers resurrection apply(db, force=True)
+    scheduler._poll_xray()
+    assert scheduler._xray_down_count == 0
+    assert len(applied) == 1
+    assert applied[0] is True
+
